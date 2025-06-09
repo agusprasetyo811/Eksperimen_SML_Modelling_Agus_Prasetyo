@@ -21,6 +21,11 @@ jobs:
           environment-file: conda.yml
           auto-activate-base: false
 
+      - name: Create .env file from secrets
+        run: |
+          echo "DAGSHUB_USERNAME=${{ secrets.DAGSHUB_USERNAME }}" >> .env
+          echo "DAGSHUB_TOKEN=${{ secrets.DAGSHUB_TOKEN }}" >> .env
+          echo "DAGSHUB_REPO_URL=${{ secrets.DAGSHUB_REPO_URL }}" >> .env
       - name: Run modelling.py
         shell: bash -l {0}
         run: |
