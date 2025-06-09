@@ -1,11 +1,11 @@
-name: Run Modelling with Local MLflow
+name: Run Modelling and Build Docker
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch:  # bisa jalan manual juga
 
 jobs:
   modelling:
@@ -22,70 +22,62 @@ jobs:
           environment-file: conda.yml
           auto-activate-base: false
 
-      - name: Start local MLflow server
-        shell: bash -l {0}
+      - name: Create .env file from secrets
         run: |
-          # Start MLflow server in background
-          mlflow server --host 0.0.0.0 --port 5000 --default-artifact-root ./mlruns &
-          echo "MLFLOW_TRACKING_URI=http://localhost:5000" >> $GITHUB_ENV
-          
-          # Wait for server to start
-          sleep 10
+          echo "DAGSHUB_USERNAME=${{ secrets.DAGSHUB_USERNAME }}" >> .env
+          echo "DAGSHUB_TOKEN=${{ secrets.DAGSHUB_TOKEN }}" >> .env
+          echo "DAGSHUB_REPO_URL=${{ secrets.DAGSHUB_REPO_URL }}" >> .env
+          echo "MLFLOW_TRACKING_URI=https://dagshub.com/agusprasetyo811/kredit_pinjaman.mlflow" >> .env
+          echo "MLFLOW_TRACKING_USERNAME=${{ secrets.DAGSHUB_USERNAME }}" >> .env
+          echo "MLFLOW_TRACKING_PASSWORD=${{ secrets.DAGSHUB_TOKEN }}" >> .env
 
-      - name: Run modelling with local MLflow
+      - name: Export env vars to GitHub ENV
+        run: |
+          source .env
+          echo "MLFLOW_TRACKING_URI=$MLFLOW_TRACKING_URI" >> $GITHUB_ENV
+          echo "MLFLOW_TRACKING_USERNAME=$MLFLOW_TRACKING_USERNAME" >> $GITHUB_ENV
+          echo "MLFLOW_TRACKING_PASSWORD=$MLFLOW_TRACKING_PASSWORD" >> $GITHUB_ENV
+
+      - name: Run modelling.py
         shell: bash -l {0}
         run: |
-          # Run your modelling scripts with local MLflow
-          export MLFLOW_TRACKING_URI=http://localhost:5000
-          
           python modelling.py
+
+      - name: Run feature_analysis.py
+        shell: bash -l {0}
+        run: |
           python feature_analysis.py
+
+      - name: Run modelling_tuning.py
+        shell: bash -l {0}
+        run: |
           python modelling_tuning.py
 
-      - name: Register model locally
-        shell: bash -l {0}
+      - name: Load run_id from file
+        id: load_run_id
         run: |
-          export MLFLOW_TRACKING_URI=http://localhost:5000
+          RUN_ID=$(cat run_id.txt)
+          echo "RUN_ID=$RUN_ID"
+          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
           
-          python -c "
-          import mlflow
-          from mlflow.tracking import MlflowClient
-          
-          client = MlflowClient()
-          
-          # Get latest run
-          experiment = client.get_experiment_by_name('Default')
-          runs = client.search_runs(experiment_ids=[experiment.experiment_id], 
-                                   order_by=['start_time DESC'], max_results=1)
-          
-          if runs:
-              run_id = runs[0].info.run_id
-              model_uri = f'runs:/{run_id}/model'
-              
-              # Register model
-              mlflow.register_model(model_uri, 'loan-model')
-              print(f'Model registered from run: {run_id}')
-          "
-
-      - name: Build Docker image from local MLflow
-        shell: bash -l {0}
-        run: |
-          export MLFLOW_TRACKING_URI=http://localhost:5000
-          
-          # Build Docker image using local MLflow
-          mlflow models build-docker \
-            -m "models:/loan-model/1" \
-            -n "${{ secrets.DOCKER_USERNAME }}/loan-model:latest"
-
       - name: Log in to Docker Hub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Push Docker image
+      - name: Download model artifacts from MLflow run
+        shell: bash -l {0}
+        run: |
+          mlflow artifacts download \
+            -r $RUN_ID \
+            -a model \
+            -d ./model_dir
+  
+      - name: Build Docker image from downloaded model
+        shell: bash -l {0}
+        run: |
+          mlflow models build-docker \
+            -m ./model_dir \
+            -n "${{ secrets.DOCKER_USERNAME }}/loan-model:latest"
+
+      - name: Push Docker image to Docker Hub
         run: |
           docker push ${{ secrets.DOCKER_USERNAME }}/loan-model:latest
-
-      - name: Upload MLflow artifacts (optional)
-        uses: actions/upload-artifact@v3
-        with:
-          name: mlflow-artifacts
-          path: ./mlruns

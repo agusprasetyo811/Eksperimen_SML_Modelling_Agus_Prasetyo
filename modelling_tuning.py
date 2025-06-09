@@ -362,6 +362,10 @@ def optimize_multiple_models(X_train, y_train, X_val, y_val):
                 
             # Register model to MLflow Model Registry
             run_id = mlflow.active_run().info.run_id
+            
+            with open("run_id.txt", "w") as f:
+                f.write(run_id)
+            
             # register model 
             mlflow.register_model(
                 model_uri=f"runs:/{run_id}/model",
