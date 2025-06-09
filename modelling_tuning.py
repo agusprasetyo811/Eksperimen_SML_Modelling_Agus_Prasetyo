@@ -585,7 +585,7 @@ def final_evaluation(all_results, baseline, X_test, y_test):
         
         comparison_df = pd.DataFrame(comparison_data)
         comparison_df.to_csv(f"{output_dir}/model_optimization_results.csv", index=False)
-        mlflow.log_artifact("model_optimization_results.csv")
+        mlflow.log_artifact(f"{output_dir}/model_optimization_results.csv")
     
     return best_model_result, test_results
 
