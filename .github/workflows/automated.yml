@@ -57,6 +57,7 @@ jobs:
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
       - name: Build Docker image from MLflow model
+        shell: bash -l {0}
         run: |
           mlflow models build-docker \
             -m "models:/loan-model/1" \
