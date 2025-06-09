@@ -17,8 +17,10 @@ import optuna
 from datetime import datetime
 import time
 import os
+import joblib
 import warnings
 warnings.filterwarnings('ignore')
+
 
 # DagsHub Integration
 from dotenv import load_dotenv
@@ -27,6 +29,8 @@ load_dotenv()
 print("="*70)
 print("COMPREHENSIVE MODEL OPTIMIZATION - DAGSHUB INTEGRATED")
 print("="*70)
+
+output_dir = "MLProject/output/models"
 
 # ============================================================================
 # 0. SETUP DAGSHUB & MLFLOW
@@ -355,6 +359,20 @@ def optimize_multiple_models(X_train, y_train, X_val, y_val):
                 # Note: In production, you'd want to save the scaler too
             else:
                 mlflow.sklearn.log_model(best_model, "optimized_model")
+                
+            # Register model to MLflow Model Registry
+            run_id = mlflow.active_run().info.run_id
+            # register model 
+            mlflow.register_model(
+                model_uri=f"runs:/{run_id}/model",
+                name=os.getenv('MODEL_NAME')
+            )
+            
+            # Save model locally
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            model_name = os.getenv("MODEL_NAME", "model")  # default jika tidak ada
+            filename = f"{model_name}_{timestamp}.pkl"
+            joblib.dump(best_model, f"{output_dir}/{filename}")
             
             results[model_name] = {
                 'model': best_model,
@@ -566,7 +584,7 @@ def final_evaluation(all_results, baseline, X_test, y_test):
             })
         
         comparison_df = pd.DataFrame(comparison_data)
-        comparison_df.to_csv("model_optimization_results.csv", index=False)
+        comparison_df.to_csv(f"{output_dir}/model_optimization_results.csv", index=False)
         mlflow.log_artifact("model_optimization_results.csv")
     
     return best_model_result, test_results

@@ -22,6 +22,8 @@ print("="*60)
 print("FEATURE ANALYSIS - DAGSHUB INTEGRATED")
 print("="*60)
 
+output_dir = "MLProject/output/feature_analysis"
+
 # ============================================================================
 # 0. DAGSHUB & MLFLOW SETUP
 # ============================================================================
@@ -93,7 +95,7 @@ def load_best_model_and_data():
     print("\n1. Loading Best Model and Data from DagsHub...")
     
     # Create output directories
-    os.makedirs("output/feature_analysis", exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     
     # Load data first
     try:
@@ -277,7 +279,7 @@ def analyze_feature_importance(model, X_train, y_train):
     print(f"   Most important feature: {importance_df.iloc[0]['feature']} ({importance_df.iloc[0]['rf_importance']:.3f})")
     
     # Save results
-    importance_df.to_csv("output/feature_analysis/feature_importance_analysis.csv", index=False)
+    importance_df.to_csv(f"{output_dir}/feature_importance_analysis.csv", index=False)
     print("✓ Saved: output/feature_analysis/feature_importance_analysis.csv")
     
     return importance_df
@@ -381,7 +383,7 @@ def create_visualizations(importance_df, X_train, y_train):
     ax6.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig('output/feature_analysis/feature_analysis_dashboard.png', dpi=300, bbox_inches='tight')
+    plt.savefig(f'{output_dir}/feature_analysis_dashboard.png', dpi=300, bbox_inches='tight')
     plt.close()
     print("   ✓ Saved: feature_analysis_dashboard.png")
     
@@ -414,7 +416,7 @@ def create_visualizations(importance_df, X_train, y_train):
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     
-    plt.savefig('output/feature_analysis/feature_ranking_comparison.png', dpi=300, bbox_inches='tight')
+    plt.savefig(f'{output_dir}/feature_ranking_comparison.png', dpi=300, bbox_inches='tight')
     plt.close()
     print("   ✓ Saved: feature_ranking_comparison.png")
     
@@ -460,7 +462,7 @@ def enhanced_shap_analysis(model, X_train, X_test):
         shap.summary_plot(shap_values, X_sample, 
                          feature_names=X_train.columns, show=False)
         plt.tight_layout()
-        plt.savefig('output/feature_analysis/shap_summary_beeswarm.png', dpi=300, bbox_inches='tight')
+        plt.savefig(f'{output_dir}/shap_summary_beeswarm.png', dpi=300, bbox_inches='tight')
         plt.close()
         
         # 2. Bar Plot
@@ -470,7 +472,7 @@ def enhanced_shap_analysis(model, X_train, X_test):
                          feature_names=X_train.columns, 
                          plot_type="bar", show=False)
         plt.tight_layout()
-        plt.savefig('output/feature_analysis/shap_importance_bar.png', dpi=300, bbox_inches='tight')
+        plt.savefig(f'{output_dir}/shap_importance_bar.png', dpi=300, bbox_inches='tight')
         plt.close()
         
         # 3. Waterfall Plot
@@ -485,7 +487,7 @@ def enhanced_shap_analysis(model, X_train, X_test):
             ), show=False
         )
         plt.tight_layout()
-        plt.savefig('output/feature_analysis/shap_waterfall_individual.png', dpi=300, bbox_inches='tight')
+        plt.savefig(f'{output_dir}/shap_waterfall_individual.png', dpi=300, bbox_inches='tight')
         plt.close()
         
         print("   ✓ SHAP analysis completed successfully")
@@ -628,7 +630,7 @@ This analysis is fully tracked in DagsHub:
 """
     
     # Save report
-    with open("output/feature_analysis/feature_analysis_report.md", "w") as f:
+    with open(f"{output_dir}/feature_analysis_report.md", "w") as f:
         f.write(report)
     
     print("✓ Comprehensive report saved: feature_analysis_report.md")
@@ -708,17 +710,17 @@ def log_to_dagshub(importance_df, corr_df, best_run_info, shap_importance=None):
             # Log all artifacts
             print("   Logging artifacts to DagsHub...")
             artifacts_to_log = [
-                "output/feature_analysis/feature_importance_analysis.csv",
-                "output/feature_analysis/feature_analysis_dashboard.png",
-                "output/feature_analysis/feature_ranking_comparison.png",
-                "output/feature_analysis/feature_analysis_report.md"
+                f"{output_dir}/feature_importance_analysis.csv",
+                f"{output_dir}/feature_analysis_dashboard.png",
+                f"{output_dir}/feature_ranking_comparison.png",
+                f"{output_dir}/feature_analysis_report.md"
             ]
             
             # Add SHAP artifacts if they exist
             shap_artifacts = [
-                "output/feature_analysis/shap_summary_beeswarm.png",
-                "output/feature_analysis/shap_importance_bar.png", 
-                "output/feature_analysis/shap_waterfall_individual.png"
+                f"{output_dir}/shap_summary_beeswarm.png",
+                f"{output_dir}/shap_importance_bar.png", 
+                f"{output_dir}/shap_waterfall_individual.png"
             ]
             
             for artifact in artifacts_to_log + shap_artifacts:

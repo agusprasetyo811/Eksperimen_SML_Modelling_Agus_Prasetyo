@@ -24,12 +24,21 @@ load_dotenv()
 import mlflow
 import mlflow.sklearn
 from mlflow.tracking import MlflowClient
+from mlflow.models import ModelSignature
 import os
 from datetime import datetime
+import joblib
 
 print("="*60)
 print("CREDIT APPROVAL PREDICTION - MODELLING STAGE")
 print("="*60)
+
+output_dir = "MLProject/output/models"
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+    print(f"✓ Output directory created: {output_dir}")
+else:
+    print(f"✓ Output directory already exists: {output_dir}")
 
 # ============================================================================
 # 0. MLFLOW SETUP
@@ -44,7 +53,7 @@ def setup_mlflow():
         dagshub_url = os.getenv('DAGSHUB_REPO_URL')
         
         if not dagshub_url:
-            print("⚠️  DAGSHUB_REPO_URL not found in environment variables")
+            print("DAGSHUB_REPO_URL not found in environment variables")
             print("   Using fallback URL...")
             dagshub_url = "https://dagshub.com/your-username/your-repo"
         
@@ -60,7 +69,7 @@ def setup_mlflow():
             os.environ['MLFLOW_TRACKING_PASSWORD'] = token
             print("✓ DagsHub credentials configured")
         else:
-            print("⚠️  DagsHub credentials not found, continuing anyway...")
+            print("DagsHub credentials not found, continuing anyway...")
         
         # Set experiment name
         experiment_name = "credit-approval-prediction"
@@ -74,7 +83,7 @@ def setup_mlflow():
                 experiment_id = experiment.experiment_id
                 print(f"✓ Using existing experiment: {experiment_name}")
             else:
-                print("⚠️  Using default experiment")
+                print("Using default experiment")
                 experiment_id = "0"
                 experiment_name = "Default"
         
@@ -87,7 +96,7 @@ def setup_mlflow():
         return experiment_id
         
     except Exception as e:
-        print(f"⚠️  MLflow setup issue: {e}")
+        print(f"MLflow setup issue: {e}")
         print("   Continuing with basic setup...")
         
         # Fallback setup
@@ -338,6 +347,8 @@ def train_and_predict(models, X_train, X_test, y_train, y_test):
                 # Log model artifact
                 mlflow.sklearn.log_model(model, f"model_{name.lower().replace(' ', '_')}")
                 
+                
+                
                 # Store results
                 trained_models[name] = model
                 predictions[name] = y_pred
@@ -357,7 +368,7 @@ def train_and_predict(models, X_train, X_test, y_train, y_test):
                 print(f"   Accuracy: {accuracy:.3f}, F1: {f1:.3f}, CV: {cv_mean:.3f}")
                 
             except Exception as e:
-                print(f"   ⚠️  MLflow logging issue for {name}: {e}")
+                print(f"   MLflow logging issue for {name}: {e}")
                 # Continue with basic training even if MLflow fails
                 model.fit(X_train, y_train)
                 y_pred = model.predict(X_test)
@@ -460,7 +471,7 @@ def cross_validation_analysis(models, X_train, y_train, model_results=None):
     
     cv_results = {}
     
-    print(f"\n🔄 5-Fold Cross-Validation Results:")
+    print(f"\n5-Fold Cross-Validation Results:")
     print("-" * 60)
     print(f"{'Model':<20} {'Mean CV Score':<15} {'Std Dev':<10}")
     print("-" * 60)
@@ -504,7 +515,7 @@ def model_recommendation(results, cv_results, trained_models):
     best_cv_model = max(cv_results.items(), key=lambda x: x[1]['mean_score'])
     best_cv_name, best_cv_metrics = best_cv_model
     
-    print(f"\n🏆 Best Model Recommendations:")
+    print(f"\nBest Model Recommendations:")
     print("-" * 50)
     print(f"Best F1-Score: {best_f1_name} (F1: {best_f1_metrics['f1_score']:.3f})")
     print(f"Best CV Score: {best_cv_name} (CV: {best_cv_metrics['mean_score']:.3f})")
@@ -521,6 +532,20 @@ def model_recommendation(results, cv_results, trained_models):
             best_model = trained_models[best_f1_name]
             mlflow.sklearn.log_model(best_model, "best_model")
             
+            # Register model to MLflow Model Registry
+            run_id = mlflow.active_run().info.run_id
+            # register model 
+            mlflow.register_model(
+                model_uri=f"runs:/{run_id}/model",
+                name=os.getenv('MODEL_NAME')
+            )
+            
+            # Save model locally
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            model_name = os.getenv("MODEL_NAME", "model")  # default jika tidak ada
+            filename = f"{model_name}_{timestamp}.pkl"
+            joblib.dump(best_model, f"{output_dir}/{filename}")
+            
             # Create and log comparison table
             comparison_data = []
             for name in results.keys():
@@ -535,7 +560,7 @@ def model_recommendation(results, cv_results, trained_models):
                 })
             
             comparison_df = pd.DataFrame(comparison_data)
-            comparison_df.to_csv("model_comparison.csv", index=False)
+            comparison_df.to_csv(f"{output_dir}/model_comparison.csv", index=False)
             mlflow.log_artifact("model_comparison.csv")
             
             # Log summary metrics
@@ -547,7 +572,7 @@ def model_recommendation(results, cv_results, trained_models):
             print(f"✓ Summary logged to MLflow")
     
     except Exception as e:
-        print(f"⚠️  Summary logging issue: {e}")
+        print(f"Summary logging issue: {e}")
     
     # Overall recommendation
     if best_f1_name == best_cv_name:
