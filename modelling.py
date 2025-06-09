@@ -1,7 +1,3 @@
-# modelling.py
-# Tahap 1: Setup dan Loading Data untuk Credit Approval Prediction
-# Integrated with MLflow and DagsHub (Fixed Version)
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt

@@ -590,20 +590,20 @@ def load_and_validate_data(config, logger):
         train_approval_rate = train_class_counts[1] / len(y_train) if len(train_class_counts) > 1 else 0
         test_approval_rate = test_class_counts[1] / len(y_test) if len(test_class_counts) > 1 else 0
         
-        logger.info(f"🎯 CLASS BALANCE ANALYSIS:")
+        logger.info(f"CLASS BALANCE ANALYSIS:")
         logger.info(f"  Training approval rate: {train_approval_rate:.3f} ({train_class_counts[1] if len(train_class_counts) > 1 else 0}/{len(y_train)})")
         logger.info(f"  Test approval rate: {test_approval_rate:.3f} ({test_class_counts[1] if len(test_class_counts) > 1 else 0}/{len(y_test)})")
         
         # Check for extreme imbalance
         if train_approval_rate < 0.1:
-            logger.warning(f"🚨 EXTREME CLASS IMBALANCE: Only {train_approval_rate:.1%} approvals!")
+            logger.warning(f"EXTREME CLASS IMBALANCE: Only {train_approval_rate:.1%} approvals!")
             logger.warning(f"   This will cause overly conservative models")
             logger.warning(f"   Consider data augmentation or class weight adjustment")
         elif train_approval_rate > 0.9:
-            logger.warning(f"🚨 EXTREME CLASS IMBALANCE: {train_approval_rate:.1%} approvals!")
+            logger.warning(f"EXTREME CLASS IMBALANCE: {train_approval_rate:.1%} approvals!")
             logger.warning(f"   This will cause overly permissive models")
         elif train_approval_rate < 0.3 or train_approval_rate > 0.8:
-            logger.warning(f"⚠️ SIGNIFICANT CLASS IMBALANCE: {train_approval_rate:.1%} approvals")
+            logger.warning(f"SIGNIFICANT CLASS IMBALANCE: {train_approval_rate:.1%} approvals")
             logger.warning(f"   Will apply balanced class weights in training")
         
         # Calculate optimal class weights based on business logic
@@ -625,7 +625,7 @@ def load_and_validate_data(config, logger):
                 class_weight_ratio = target_approval_rate / (1 - target_approval_rate)
                 optimal_class_weights = {0: class_weight_ratio, 1: 1.0}
             
-            logger.info(f"📊 OPTIMAL CLASS WEIGHTS (targeting {target_approval_rate:.1%} approval):")
+            logger.info(f"OPTIMAL CLASS WEIGHTS (targeting {target_approval_rate:.1%} approval):")
             logger.info(f"  Class 0 (Reject): {optimal_class_weights[0]:.3f}")
             logger.info(f"  Class 1 (Approve): {optimal_class_weights[1]:.3f}")
         else:
@@ -669,7 +669,7 @@ def load_and_validate_data(config, logger):
 
 def validate_model_business_logic(model, X_val, y_val, config, logger, model_name="Model"):
     """Validate model follows business logic rules"""
-    logger.info(f"🏦 Business logic validation for {model_name}...")
+    logger.info(f"Business logic validation for {model_name}...")
     
     try:
         # Make predictions
@@ -721,10 +721,10 @@ def validate_model_business_logic(model, X_val, y_val, config, logger, model_nam
         else:
             logger.warning(f"  {model_name} FAILS business logic validation")
             for issue in validation_results['critical_issues']:
-                logger.warning(f"     🚨 {issue}")
+                logger.warning(f"     {issue}")
         
         for warning in validation_results['warnings']:
-            logger.warning(f"     ⚠️ {warning}")
+            logger.warning(f"     {warning}")
         
         return validation_results
         
@@ -822,7 +822,7 @@ def get_baseline_performance(data, config, logger, mlflow=None):
                 'business_validation': validate_model_business_logic(model, data['X_val'], data['y_val'], config, logger, 'Default RF')
             }
         
-        logger.info(f"🏆 Selected Baseline: {best_baseline['name']}")
+        logger.info(f"Selected Baseline: {best_baseline['name']}")
         logger.info(f"  Test F1-Score: {best_baseline['f1']:.4f}")
         logger.info(f"  Test Accuracy: {best_baseline['accuracy']:.4f}")
         logger.info(f"  CV F1-Score: {best_baseline['cv_f1']:.4f}")
@@ -1467,7 +1467,7 @@ def main():
         logger.info(f"\nVALIDATION RESULTS:")
         logger.info(f"  F1 Target (+{config.target_improvement:.3f}): {'ACHIEVED' if target_met else 'NOT MET'} ({best_model['f1_improvement']:+.4f})")
         logger.info(f"  Business Logic: {'VALID' if business_valid else 'INVALID'}")
-        logger.info(f"  Approval Rate: {'HEALTHY' if config.min_approval_rate <= best_model['test_approval_rate'] <= config.max_approval_rate else '⚠️ OUT OF RANGE'} ({best_model['test_approval_rate']:.1%})")
+        logger.info(f"  Approval Rate: {'HEALTHY' if config.min_approval_rate <= best_model['test_approval_rate'] <= config.max_approval_rate else 'OUT OF RANGE'} ({best_model['test_approval_rate']:.1%})")
         
         if target_met and business_valid:
             logger.info(f"\nOPTIMIZATION FULLY SUCCESSFUL!")
