@@ -37,6 +37,9 @@ jobs:
           echo "MLFLOW_TRACKING_URI=$MLFLOW_TRACKING_URI" >> $GITHUB_ENV
           echo "MLFLOW_TRACKING_USERNAME=$MLFLOW_TRACKING_USERNAME" >> $GITHUB_ENV
           echo "MLFLOW_TRACKING_PASSWORD=$MLFLOW_TRACKING_PASSWORD" >> $GITHUB_ENV
+          # Set timeout and retry configurations
+          echo "MLFLOW_HTTP_REQUEST_TIMEOUT=300" >> $GITHUB_ENV
+          echo "MLFLOW_HTTP_REQUEST_MAX_RETRIES=5" >> $GITHUB_ENV
 
       - name: Run modelling.py
         shell: bash -l {0}
@@ -53,16 +56,102 @@ jobs:
         run: |
           python modelling_tuning.py
 
+      - name: Get latest model version
+        shell: bash -l {0}
+        id: get-version
+        run: |
+          # Get latest version of the model
+          LATEST_VERSION=$(python -c "
+          import mlflow
+          from mlflow.tracking import MlflowClient
+          
+          client = MlflowClient()
+          try:
+              # Get all versions of the model
+              model_versions = client.get_latest_versions('loan-model', stages=['None', 'Staging', 'Production'])
+              if model_versions:
+                  # Get the highest version number
+                  latest_version = max([int(v.version) for v in model_versions])
+                  print(latest_version)
+              else:
+                  print('1')  # Default to version 1 if no versions found
+          except Exception as e:
+              print('1')  # Default to version 1 if error occurs
+              print(f'Error: {e}', file=sys.stderr)
+          ")
+          
+          echo "LATEST_VERSION=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Latest model version: $LATEST_VERSION"
+
       - name: Log in to Docker Hub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Build Docker image from MLflow model
+      - name: Build Docker image from MLflow model (with retry)
         shell: bash -l {0}
         run: |
-          mlflow models build-docker \
-            -m "models:/loan-model/1" \
-            -n "${{ secrets.DOCKER_USERNAME }}/loan-model:v1"
+          MODEL_VERSION="${{ steps.get-version.outputs.LATEST_VERSION }}"
+          MODEL_URI="models:/loan-model/$MODEL_VERSION"
+          IMAGE_NAME="${{ secrets.DOCKER_USERNAME }}/loan-model:v$MODEL_VERSION"
+          
+          echo "Building Docker image for model version: $MODEL_VERSION"
+          echo "Model URI: $MODEL_URI"
+          echo "Image name: $IMAGE_NAME"
+          
+          # Function to retry MLflow command
+          retry_mlflow_build() {
+            local max_attempts=3
+            local attempt=1
+            
+            while [ $attempt -le $max_attempts ]; do
+              echo "Attempt $attempt of $max_attempts..."
+              
+              if mlflow models build-docker -m "$MODEL_URI" -n "$IMAGE_NAME"; then
+                echo "Docker build successful on attempt $attempt"
+                return 0
+              else
+                echo "Attempt $attempt failed"
+                if [ $attempt -lt $max_attempts ]; then
+                  echo "Waiting 30 seconds before retry..."
+                  sleep 30
+                fi
+                attempt=$((attempt + 1))
+              fi
+            done
+            
+            echo "All attempts failed. Trying alternative approach..."
+            return 1
+          }
+          
+          # Try building with retry
+          if ! retry_mlflow_build; then
+            echo "MLflow build failed. Trying to download model first..."
+            
+            # Alternative: Download model artifacts first, then build
+            mkdir -p ./downloaded-model
+            
+            if mlflow artifacts download -u "$MODEL_URI" -d ./downloaded-model; then
+              echo "Successfully downloaded model artifacts"
+              mlflow models build-docker -m ./downloaded-model -n "$IMAGE_NAME"
+            else
+              echo "Failed to download model artifacts"
+              exit 1
+            fi
+          fi
 
-      - name: Push Docker image to Docker Hub
+      - name: Tag image with latest
         run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/loan-model:v1
+          MODEL_VERSION="${{ steps.get-version.outputs.LATEST_VERSION }}"
+          docker tag ${{ secrets.DOCKER_USERNAME }}/loan-model:v$MODEL_VERSION ${{ secrets.DOCKER_USERNAME }}/loan-model:latest
+
+      - name: Push Docker images to Docker Hub
+        run: |
+          MODEL_VERSION="${{ steps.get-version.outputs.LATEST_VERSION }}"
+          docker push ${{ secrets.DOCKER_USERNAME }}/loan-model:v$MODEL_VERSION
+          docker push ${{ secrets.DOCKER_USERNAME }}/loan-model:latest
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # Clean up downloaded files
+          rm -rf ./downloaded-model
+          docker system prune -f
