@@ -1,11 +1,11 @@
-name: Run Modelling and Build Docker
+name: Run Modelling with Local MLflow
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # bisa jalan manual juga
+  workflow_dispatch:
 
 jobs:
   modelling:
@@ -22,136 +22,70 @@ jobs:
           environment-file: conda.yml
           auto-activate-base: false
 
-      - name: Create .env file from secrets
-        run: |
-          echo "DAGSHUB_USERNAME=${{ secrets.DAGSHUB_USERNAME }}" >> .env
-          echo "DAGSHUB_TOKEN=${{ secrets.DAGSHUB_TOKEN }}" >> .env
-          echo "DAGSHUB_REPO_URL=${{ secrets.DAGSHUB_REPO_URL }}" >> .env
-          echo "MLFLOW_TRACKING_URI=https://dagshub.com/agusprasetyo811/kredit_pinjaman.mlflow" >> .env
-          echo "MLFLOW_TRACKING_USERNAME=${{ secrets.DAGSHUB_USERNAME }}" >> .env
-          echo "MLFLOW_TRACKING_PASSWORD=${{ secrets.DAGSHUB_TOKEN }}" >> .env
-
-      - name: Export env vars to GitHub ENV
-        run: |
-          source .env
-          echo "MLFLOW_TRACKING_URI=$MLFLOW_TRACKING_URI" >> $GITHUB_ENV
-          echo "MLFLOW_TRACKING_USERNAME=$MLFLOW_TRACKING_USERNAME" >> $GITHUB_ENV
-          echo "MLFLOW_TRACKING_PASSWORD=$MLFLOW_TRACKING_PASSWORD" >> $GITHUB_ENV
-          # Set timeout and retry configurations
-          echo "MLFLOW_HTTP_REQUEST_TIMEOUT=300" >> $GITHUB_ENV
-          echo "MLFLOW_HTTP_REQUEST_MAX_RETRIES=5" >> $GITHUB_ENV
-
-      - name: Run modelling.py
+      - name: Start local MLflow server
         shell: bash -l {0}
         run: |
+          # Start MLflow server in background
+          mlflow server --host 0.0.0.0 --port 5000 --default-artifact-root ./mlruns &
+          echo "MLFLOW_TRACKING_URI=http://localhost:5000" >> $GITHUB_ENV
+          
+          # Wait for server to start
+          sleep 10
+
+      - name: Run modelling with local MLflow
+        shell: bash -l {0}
+        run: |
+          # Run your modelling scripts with local MLflow
+          export MLFLOW_TRACKING_URI=http://localhost:5000
+          
           python modelling.py
-
-      - name: Run feature_analysis.py
-        shell: bash -l {0}
-        run: |
           python feature_analysis.py
-
-      - name: Run modelling_tuning.py
-        shell: bash -l {0}
-        run: |
           python modelling_tuning.py
 
-      - name: Get latest model version
+      - name: Register model locally
         shell: bash -l {0}
-        id: get-version
         run: |
-          # Get latest version of the model
-          LATEST_VERSION=$(python -c "
+          export MLFLOW_TRACKING_URI=http://localhost:5000
+          
+          python -c "
           import mlflow
           from mlflow.tracking import MlflowClient
           
           client = MlflowClient()
-          try:
-              # Get all versions of the model
-              model_versions = client.get_latest_versions('loan-model', stages=['None', 'Staging', 'Production'])
-              if model_versions:
-                  # Get the highest version number
-                  latest_version = max([int(v.version) for v in model_versions])
-                  print(latest_version)
-              else:
-                  print('1')  # Default to version 1 if no versions found
-          except Exception as e:
-              print('1')  # Default to version 1 if error occurs
-              print(f'Error: {e}', file=sys.stderr)
-          ")
           
-          echo "LATEST_VERSION=$LATEST_VERSION" >> $GITHUB_OUTPUT
-          echo "Latest model version: $LATEST_VERSION"
+          # Get latest run
+          experiment = client.get_experiment_by_name('Default')
+          runs = client.search_runs(experiment_ids=[experiment.experiment_id], 
+                                   order_by=['start_time DESC'], max_results=1)
+          
+          if runs:
+              run_id = runs[0].info.run_id
+              model_uri = f'runs:/{run_id}/model'
+              
+              # Register model
+              mlflow.register_model(model_uri, 'loan-model')
+              print(f'Model registered from run: {run_id}')
+          "
+
+      - name: Build Docker image from local MLflow
+        shell: bash -l {0}
+        run: |
+          export MLFLOW_TRACKING_URI=http://localhost:5000
+          
+          # Build Docker image using local MLflow
+          mlflow models build-docker \
+            -m "models:/loan-model/1" \
+            -n "${{ secrets.DOCKER_USERNAME }}/loan-model:latest"
 
       - name: Log in to Docker Hub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Build Docker image from MLflow model (with retry)
-        shell: bash -l {0}
+      - name: Push Docker image
         run: |
-          MODEL_VERSION="${{ steps.get-version.outputs.LATEST_VERSION }}"
-          MODEL_URI="models:/loan-model/$MODEL_VERSION"
-          IMAGE_NAME="${{ secrets.DOCKER_USERNAME }}/loan-model:v$MODEL_VERSION"
-          
-          echo "Building Docker image for model version: $MODEL_VERSION"
-          echo "Model URI: $MODEL_URI"
-          echo "Image name: $IMAGE_NAME"
-          
-          # Function to retry MLflow command
-          retry_mlflow_build() {
-            local max_attempts=3
-            local attempt=1
-            
-            while [ $attempt -le $max_attempts ]; do
-              echo "Attempt $attempt of $max_attempts..."
-              
-              if mlflow models build-docker -m "$MODEL_URI" -n "$IMAGE_NAME"; then
-                echo "Docker build successful on attempt $attempt"
-                return 0
-              else
-                echo "Attempt $attempt failed"
-                if [ $attempt -lt $max_attempts ]; then
-                  echo "Waiting 30 seconds before retry..."
-                  sleep 30
-                fi
-                attempt=$((attempt + 1))
-              fi
-            done
-            
-            echo "All attempts failed. Trying alternative approach..."
-            return 1
-          }
-          
-          # Try building with retry
-          if ! retry_mlflow_build; then
-            echo "MLflow build failed. Trying to download model first..."
-            
-            # Alternative: Download model artifacts first, then build
-            mkdir -p ./downloaded-model
-            
-            if mlflow artifacts download -u "$MODEL_URI" -d ./downloaded-model; then
-              echo "Successfully downloaded model artifacts"
-              mlflow models build-docker -m ./downloaded-model -n "$IMAGE_NAME"
-            else
-              echo "Failed to download model artifacts"
-              exit 1
-            fi
-          fi
-
-      - name: Tag image with latest
-        run: |
-          MODEL_VERSION="${{ steps.get-version.outputs.LATEST_VERSION }}"
-          docker tag ${{ secrets.DOCKER_USERNAME }}/loan-model:v$MODEL_VERSION ${{ secrets.DOCKER_USERNAME }}/loan-model:latest
-
-      - name: Push Docker images to Docker Hub
-        run: |
-          MODEL_VERSION="${{ steps.get-version.outputs.LATEST_VERSION }}"
-          docker push ${{ secrets.DOCKER_USERNAME }}/loan-model:v$MODEL_VERSION
           docker push ${{ secrets.DOCKER_USERNAME }}/loan-model:latest
 
-      - name: Cleanup
-        if: always()
-        run: |
-          # Clean up downloaded files
-          rm -rf ./downloaded-model
-          docker system prune -f
+      - name: Upload MLflow artifacts (optional)
+        uses: actions/upload-artifact@v3
+        with:
+          name: mlflow-artifacts
+          path: ./mlruns
