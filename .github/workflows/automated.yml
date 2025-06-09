@@ -43,41 +43,20 @@ jobs:
         run: |
           python modelling.py
 
-      - name: Run feature_analysis.py
-        shell: bash -l {0}
-        run: |
-          python feature_analysis.py
-
       - name: Run modelling_tuning.py
         shell: bash -l {0}
         run: |
           python modelling_tuning.py
-
-      - name: Load run_id from file
-        id: load_run_id
-        run: |
-          RUN_ID=$(cat run_id.txt)
-          echo "RUN_ID=$RUN_ID"
-          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
           
       - name: Log in to Docker Hub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Download model artifacts from MLflow run
+      - name: Build Docker image from app.py and model
         shell: bash -l {0}
         run: |
-          mlflow artifacts download \
-            -r $RUN_ID \
-            -a model \
-            -d ./model_dir
-  
-      - name: Build Docker image from downloaded model
-        shell: bash -l {0}
-        run: |
-          mlflow models build-docker \
-            -m ./model_dir \
-            -n "${{ secrets.DOCKER_USERNAME }}/loan-model:latest"
+          # Build Docker image dari direktori MLProject
+          docker build -t "${{ secrets.DOCKER_USERNAME }}/loan_model:latest" ./MLProject
 
       - name: Push Docker image to Docker Hub
         run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/loan-model:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/loan_model:latest

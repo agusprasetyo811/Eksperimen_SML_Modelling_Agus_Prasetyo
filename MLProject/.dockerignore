@@ -1,0 +1,69 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker files
+docker-compose*
+.dockerignore
+*.md
+
+# Test files (exclude test directory)
+test/
+tests/
+*_test.py
+.pytest_cache/
+
+# Logs (akan di-mount sebagai volume)
+logs/
+*.log
+
+# Data files yang tidak perlu (kecuali output/models)
+data/
+*.csv
+*.json
+*.xlsx
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Backup files
+*.bak
+*.backup
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Development files
+.env.local
+.env.development
