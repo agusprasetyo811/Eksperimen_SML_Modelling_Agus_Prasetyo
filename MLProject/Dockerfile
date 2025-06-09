@@ -1,5 +1,5 @@
 # Multi-stage build untuk optimasi ukuran image
-FROM python:3.11-slim as builder
+FROM python:3.12-slim as builder
 
 # Set working directory
 WORKDIR /app
@@ -15,15 +15,15 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Production stage
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV FLASK_ENV=production
-ENV MODEL_PATH=/app/output/models/best_model.pkl
+ENV MODEL_PATH=output/models/best_model.pkl
 ENV THRESHOLD=0.2
-ENV PORT=5002
+ENV PORT=5000
 ENV HOST=0.0.0.0
 
 # Create non-root user untuk security
@@ -62,4 +62,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 EXPOSE ${PORT}
 
 # Command untuk menjalankan aplikasi
-CMD ["python", "app.py", "--host", "0.0.0.0", "--port", "5002", "--threshold", "0.2", "--model", "output/models/best_model.pkl"]
+CMD ["python", "app.py", "--host", "0.0.0.0", "--port", "5000", "--threshold", "0.2", "--model", "output/models/best_model.pkl"]

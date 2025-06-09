@@ -846,7 +846,7 @@ if __name__ == '__main__':
     parser.add_argument('--host', default='0.0.0.0', help='Host address')
     parser.add_argument('--port', type=int, default=5002, help='Port number')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument('--model', default='output/models/best_model.pkl', help='Path to model file')
+    parser.add_argument('--model', default='/app/output/models/best_model.pkl', help='Path to model file')
     parser.add_argument('--threshold', type=float, default=0.2, help='Default prediction threshold (0-1)')
     
     args = parser.parse_args()
