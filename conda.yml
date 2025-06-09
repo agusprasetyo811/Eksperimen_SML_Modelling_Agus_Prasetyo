@@ -1,0 +1,33 @@
+name: modelling-env
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - numpy=2.2.6
+  - pandas=2.3.0
+  - scikit-learn=1.6.1
+  - matplotlib=3.10.3
+  - seaborn=0.13.2
+  - joblib=1.5.1
+  - xgboost=2.0.3
+  - shap=0.47.2
+  - flask=3.1.1
+  - fastapi=0.115.12
+  - uvicorn=0.34.3
+  - sqlalchemy=2.0.41
+  - pip:
+      - mlflow==2.22.0
+      - dagshub==0.5.10
+      - dagshub-annotation-converter==0.1.9
+      - optuna==4.3.0
+      - pyarrow==19.0.1
+      - protobuf==6.31.1
+      - docker==7.1.0
+      - boto3==1.38.32
+      - google-auth==2.40.3
+      - gql==3.5.3
+      - graphene==3.4.3
+      - rich==14.0.0
+      - requests==2.32.3
