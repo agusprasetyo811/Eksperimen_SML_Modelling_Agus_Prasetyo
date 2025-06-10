@@ -13,7 +13,7 @@ import json
 # QUICK TEST EXAMPLES - Siap Pakai!
 # ============================================================================
 
-API_URL = "http://localhost:5002"
+API_URL = "http://localhost:5001"
 
 def quick_test():
     """Test cepat dengan 5 contoh realistic"""

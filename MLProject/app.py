@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-app_fixed.py - Enhanced Flask application with multi-format model loading and threshold support
+app.py - Enhanced Flask application with multi-format model loading and threshold support
 """
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 import pickle
 import joblib
 import pandas as pd
@@ -11,16 +11,104 @@ import json
 import os
 import logging
 import gzip
+import time
 import traceback
-import sys  # FIXED: Added missing import
+import sys  # Added missing import
 from datetime import datetime
 from pathlib import Path
+
+from prometheus_client import Histogram, generate_latest, REGISTRY, Counter, Gauge, CONTENT_TYPE_LATEST, Summary
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# Inisialisasi metrics untuk aplikasi Flask
+# Inisialisasi histogram untuk melacak durasi respons API
+api_response_duration = Histogram('api_response_duration_seconds', 'API response duration')
+api_request_count = Counter('api_request_count', 'Total number of requests to the API')
+api_error_rate = Counter('api_error_rate', 'Total number of errors in API', ['error_type'])
+api_status_codes = Counter('api_status_codes', 'HTTP status codes from the API', ['status_code'])
+api_concurrent_requests = Gauge('api_concurrent_requests', 'Current number of concurrent API requests')
+
+# Performance metrics
+model_latency = Histogram('model_prediction_latency_seconds', 'Model prediction latency')
+model_predictions_total = Counter('model_predictions_total', 'Total predictions made')
+
+# Prediction quality metrics
+model_confidence_score = Histogram('model_confidence_score', 'Model confidence scores', 
+                                 buckets=[0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+prediction_class_distribution = Counter('prediction_class_distribution', 'Distribution of prediction classes', ['prediction_class'])
+low_confidence_predictions = Counter('low_confidence_predictions', 'Predictions with low confidence')
+high_risk_predictions = Counter('high_risk_predictions', 'High risk predictions')
+
+# Input data quality metrics
+missing_fields_counter = Counter('missing_input_fields', 'Missing input fields', ['field'])
+credit_score_distribution = Histogram('credit_score_distribution', 'Distribution of credit scores',
+                                    buckets=[300, 400, 500, 600, 700, 800, 850])
+debt_ratio_distribution = Histogram('debt_ratio_distribution', 'Distribution of debt ratios',
+                                  buckets=[1, 2, 3, 5, 10, 20])
+unusual_credit_scores = Counter('unusual_credit_scores', 'Credit scores outside normal range')
+high_debt_ratio_cases = Counter('high_debt_ratio_cases', 'Cases with unusually high debt ratio')
+
+# Data drift metrics
+data_drift_alerts = Counter('data_drift_alerts', 'Data drift detection alerts', ['feature'])
+feature_monitoring_errors = Counter('feature_monitoring_errors', 'Errors in feature monitoring')
+input_validation_errors = Counter('input_validation_errors', 'Input validation errors', ['error_type'])
+
+
+def track_metrics(func):
+    """Decorator to track metrics for API endpoints"""
+    from functools import wraps
+    
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        api_request_count.inc()
+        api_concurrent_requests.inc()  # Increment concurrent requests counter
+        
+        try:
+            with api_response_duration.time():
+                response = func(*args, **kwargs)
+            
+            # Handle different response formats
+            if isinstance(response, tuple):
+                status_code = response[1]
+            else:
+                status_code = 200
+            
+            # Track status codes
+            api_status_codes.labels(status_code=str(status_code)).inc()
+            
+            return response
+            
+        except ValueError as e:
+            api_error_rate.labels(error_type='validation_error').inc()
+            api_status_codes.labels(status_code='400').inc()
+            raise
+        except FileNotFoundError as e:
+            api_error_rate.labels(error_type='file_not_found').inc()
+            api_status_codes.labels(status_code='404').inc()
+            raise
+        except PermissionError as e:
+            api_error_rate.labels(error_type='permission_error').inc()
+            api_status_codes.labels(status_code='403').inc()
+            raise
+        except RuntimeError as e:
+            api_error_rate.labels(error_type='runtime_error').inc()
+            api_status_codes.labels(status_code='503').inc()
+            raise
+        except Exception as e:
+            api_error_rate.labels(error_type='internal_error').inc()
+            api_status_codes.labels(status_code='500').inc()
+            raise
+        finally:
+            api_concurrent_requests.dec()  # Always decrement the counter, even if an error occurred
+    
+    return wrapper
+
 
 class EnhancedModelLoader:
     """Enhanced model loader with support for multiple formats and threshold configuration"""
@@ -72,7 +160,7 @@ class EnhancedModelLoader:
                 model = pickle.load(f)
             logger.info("Successfully loaded with pickle")
             
-            # FIXED: Validate model has predict method
+            # Validate model has predict method
             if not hasattr(model, 'predict'):
                 logger.warning("Loaded object doesn't have predict method!")
                 logger.info(f"Object type: {type(model)}")
@@ -92,7 +180,7 @@ class EnhancedModelLoader:
             model = joblib.load(self.model_path)
             logger.info("Successfully loaded with joblib")
             
-            # FIXED: Validate model has predict method
+            # Validate model has predict method
             if not hasattr(model, 'predict'):
                 logger.warning("Loaded object doesn't have predict method!")
                 logger.info(f"Object type: {type(model)}")
@@ -188,11 +276,11 @@ class EnhancedModelLoader:
         """Load model using multiple methods"""
         logger.info(f"Loading model from {self.model_path}...")
         
-        # FIXED: Better file existence check
+        # Better file existence check
         if not os.path.exists(self.model_path):
             logger.error(f"Model file not found: {self.model_path}")
             
-            # FIXED: Try to find alternative files in the directory
+            # Try to find alternative files in the directory
             parent_dir = os.path.dirname(self.model_path) or '.'
             if os.path.exists(parent_dir):
                 files = os.listdir(parent_dir)
@@ -216,7 +304,7 @@ class EnhancedModelLoader:
         if file_size == 0:
             raise ValueError("Model file is empty")
         
-        # FIXED: Add file readability check
+        # Add file readability check
         if not os.access(self.model_path, os.R_OK):
             raise PermissionError(f"Cannot read model file: {self.model_path}")
         
@@ -253,11 +341,11 @@ class EnhancedModelLoader:
                     # Test basic functionality
                     if not hasattr(self.model, 'predict'):
                         logger.error("Model missing predict() method")
-                        # FIXED: Don't raise error immediately, continue trying other methods
+                        # Don't raise error immediately, continue trying other methods
                         self.model = None
                         continue
                     
-                    # FIXED: Test prediction to ensure model works
+                    # Test prediction to ensure model works
                     try:
                         if self.feature_names:
                             test_data = np.random.rand(1, len(self.feature_names))
@@ -280,10 +368,10 @@ class EnhancedModelLoader:
                 logger.error(f"Method {method.__name__} failed: {e}")
                 continue
         
-        # FIXED: Ensure we return the correct status
+        # Ensure we return the correct status
         if not model_loaded or self.model is None:
             logger.error("Could not load model with any available method")
-            # FIXED: Print more detailed error info
+            # Print more detailed error info
             logger.error(f"Final status - Model: {self.model}, Type: {self.model_type}")
             raise RuntimeError("Could not load model with any available method")
         
@@ -420,10 +508,35 @@ class EnhancedModelLoader:
         
         return result
 
+def monitor_input_features(data):
+    """Monitor input feature distributions"""
+    try:
+        # Monitor Skor Kredit distribution
+        skor_kredit = data.get('Skor Kredit', 0)
+        credit_score_distribution.observe(skor_kredit)
+        
+        # Monitor unusual values
+        if skor_kredit < 300 or skor_kredit > 850:
+            unusual_credit_scores.inc()
+        
+        # Monitor Debt Ratio
+        debt_ratio_str = data.get('Debt Ratio', '0x')
+        debt_ratio = float(debt_ratio_str.replace('x', ''))
+        debt_ratio_distribution.observe(debt_ratio)
+        
+        if debt_ratio > 10:  # Unusually high debt ratio
+            high_debt_ratio_cases.inc()
+            
+    except Exception as e:
+        feature_monitoring_errors.inc()
+        app.logger.warning(f"Feature monitoring error: {e}")
+
+
 # Global model loader with default threshold
 model_loader = EnhancedModelLoader(threshold=0.5)
 
 @app.route('/health', methods=['GET'])
+@track_metrics
 def health():
     """Health check endpoint"""
     status = {
@@ -440,11 +553,13 @@ def health():
     return jsonify(status), status_code
 
 @app.route('/info', methods=['GET'])
+@track_metrics
 def info():
     """Get model information"""
     return jsonify(model_loader.get_model_info())
 
 @app.route('/debug', methods=['GET'])
+@track_metrics
 def debug():
     """Debug endpoint for troubleshooting"""
     debug_info = {
@@ -469,7 +584,7 @@ def debug():
         except:
             debug_info["file_header"] = "Could not read"
     
-    # FIXED: Add directory listing for debugging
+    # Add directory listing for debugging
     try:
         parent_dir = os.path.dirname(model_loader.model_path) or '.'
         if os.path.exists(parent_dir):
@@ -482,6 +597,7 @@ def debug():
     return jsonify(debug_info)
 
 @app.route('/threshold', methods=['GET'])
+@track_metrics
 def get_threshold():
     """Get current threshold setting"""
     return jsonify({
@@ -491,28 +607,38 @@ def get_threshold():
     })
 
 @app.route('/threshold', methods=['POST'])
+@track_metrics
 def set_threshold():
     """Set prediction threshold"""
     try:
         data = request.get_json()
         if data is None:
+            api_error_rate.labels(error_type='validation_error').inc()
+            api_status_codes.labels(status_code='400').inc()
             return jsonify({"error": "No JSON data provided"}), 400
         
         if 'threshold' not in data:
+            api_error_rate.labels(error_type='validation_error').inc()
+            api_status_codes.labels(status_code='400').inc()
             return jsonify({"error": "Missing 'threshold' field"}), 400
         
         threshold = data['threshold']
         
         # Validate threshold
         if not isinstance(threshold, (int, float)):
+            api_error_rate.labels(error_type='validation_error').inc()
+            api_status_codes.labels(status_code='400').inc()
             return jsonify({"error": "Threshold must be a number"}), 400
         
         if not 0 <= threshold <= 1:
+            api_error_rate.labels(error_type='validation_error').inc()
+            api_status_codes.labels(status_code='400').inc()
             return jsonify({"error": "Threshold must be between 0 and 1"}), 400
         
         # Set threshold
         model_loader.set_threshold(threshold)
         
+        api_status_codes.labels(status_code='200').inc()
         return jsonify({
             "status": "success",
             "message": f"Threshold updated to {threshold}",
@@ -522,21 +648,25 @@ def set_threshold():
         
     except Exception as e:
         logger.error(f"Set threshold error: {e}")
+        api_error_rate.labels(error_type='internal_error').inc()
+        api_status_codes.labels(status_code='500').inc()
         return jsonify({
             "status": "error",
             "message": f"Failed to set threshold: {str(e)}"
         }), 500
 
 @app.route('/reload', methods=['POST'])
+@track_metrics
 def reload_model():
     """Reload model from file"""
     try:
-        # FIXED: Reset model state before reloading
+        # Reset model state before reloading
         model_loader.model = None
         model_loader.model_type = None
         model_loader.loading_method = None
         
         if model_loader.load_model():
+            api_status_codes.labels(status_code='200').inc()
             return jsonify({
                 "status": "success",
                 "message": "Model reloaded successfully",
@@ -546,51 +676,99 @@ def reload_model():
                 "reloaded_at": datetime.now().isoformat()
             })
         else:
+            api_error_rate.labels(error_type='model_load_error').inc()
+            api_status_codes.labels(status_code='500').inc()
             return jsonify({
                 "status": "error", 
                 "message": "Failed to reload model"
             }), 500
     except Exception as e:
         logger.error(f"Reload error: {e}")
+        api_error_rate.labels(error_type='model_load_error').inc()
+        api_status_codes.labels(status_code='500').inc()
         return jsonify({
             "status": "error",
             "message": f"Reload failed: {str(e)}"
         }), 500
 
 @app.route('/predict', methods=['POST'])
+@track_metrics
 def predict():
     """Make predictions with current threshold"""
     try:
+        start_time = time.time()
+        
         if model_loader.model is None:
+            api_error_rate.labels(error_type='model_not_loaded').inc()
+            api_status_codes.labels(status_code='503').inc()
             return jsonify({"error": "Model not loaded"}), 503
         
         # Get input data
         data = request.get_json()
         if data is None:
+            api_error_rate.labels(error_type='validation_error').inc()
+            api_status_codes.labels(status_code='400').inc()
             return jsonify({"error": "No JSON data provided"}), 400
         
         # Make prediction
         result = model_loader.predict(data)
         
+        # === MONITORING SECTION ===
+        try:
+            # 1. Performance Metrics
+            latency = time.time() - start_time
+            model_latency.observe(latency)
+            model_predictions_total.inc()
+            
+            # 2. Prediction Distribution - PERBAIKAN DI SINI
+            if 'predictions' in result and len(result['predictions']) > 0:
+                prediction_value = result['predictions'][0]
+                prediction_class_distribution.labels(prediction_class=str(prediction_value)).inc()
+            
+            # 3. Confidence Monitoring
+            if 'probabilities' in result and len(result['probabilities']) > 0:
+                confidence = max(result['probabilities'][0])
+                model_confidence_score.observe(confidence)
+                
+                if confidence < 0.6:  # Low confidence threshold
+                    low_confidence_predictions.inc()
+            
+            # 4. High risk monitoring
+            if 'predictions' in result and len(result['predictions']) > 0:
+                if result['predictions'][0] == 1:  # High risk prediction
+                    high_risk_predictions.inc()
+        
+        except Exception as monitoring_error:
+            # Jangan biarkan monitoring error mengganggu prediction
+            app.logger.warning(f"Monitoring error: {monitoring_error}")
+        
+        api_status_codes.labels(status_code='200').inc()
+        
         return jsonify(result)
         
-    except ValueError as e:
-        return jsonify({"error": f"Input validation error: {str(e)}"}), 400
     except Exception as e:
-        logger.error(f"Prediction error: {e}")
-        traceback.print_exc()
-        return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
+        api_error_rate.labels(error_type='prediction_error').inc()
+        api_status_codes.labels(status_code='500').inc()
+        app.logger.error(f"Prediction error: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
+    
+    
 
 @app.route('/predict_with_threshold', methods=['POST'])
+@track_metrics
 def predict_with_threshold():
     """Make predictions with optional custom threshold for this request only"""
     try:
         if model_loader.model is None:
+            api_error_rate.labels(error_type='model_not_loaded').inc()
+            api_status_codes.labels(status_code='503').inc()
             return jsonify({"error": "Model not loaded"}), 503
         
         # Get input data
         data = request.get_json()
         if data is None:
+            api_error_rate.labels(error_type='validation_error').inc()
+            api_status_codes.labels(status_code='400').inc()
             return jsonify({"error": "No JSON data provided"}), 400
         
         # Extract threshold if provided
@@ -601,12 +779,15 @@ def predict_with_threshold():
             # Temporarily set custom threshold if provided
             if custom_threshold is not None:
                 if not 0 <= custom_threshold <= 1:
+                    api_error_rate.labels(error_type='validation_error').inc()
+                    api_status_codes.labels(status_code='400').inc()
                     return jsonify({"error": "Threshold must be between 0 and 1"}), 400
                 model_loader.set_threshold(custom_threshold)
             
             # Make prediction
             result = model_loader.predict(data)
             
+            api_status_codes.labels(status_code='200').inc()
             return jsonify(result)
             
         finally:
@@ -615,25 +796,36 @@ def predict_with_threshold():
                 model_loader.set_threshold(original_threshold)
         
     except ValueError as e:
+        api_error_rate.labels(error_type='validation_error').inc()
+        api_status_codes.labels(status_code='400').inc()
         return jsonify({"error": f"Input validation error: {str(e)}"}), 400
     except Exception as e:
         logger.error(f"Prediction with threshold error: {e}")
         traceback.print_exc()
+        api_error_rate.labels(error_type='prediction_error').inc()
+        api_status_codes.labels(status_code='500').inc()
         return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
 
 @app.route('/threshold_analysis', methods=['POST'])
+@track_metrics
 def threshold_analysis():
     """Analyze predictions across multiple threshold values"""
     try:
         if model_loader.model is None:
+            api_error_rate.labels(error_type='model_not_loaded').inc()
+            api_status_codes.labels(status_code='503').inc()
             return jsonify({"error": "Model not loaded"}), 503
         
         if not hasattr(model_loader.model, 'predict_proba'):
+            api_error_rate.labels(error_type='model_capability_error').inc()
+            api_status_codes.labels(status_code='400').inc()
             return jsonify({"error": "Model doesn't support probability predictions"}), 400
         
         # Get input data
         data = request.get_json()
         if data is None:
+            api_error_rate.labels(error_type='validation_error').inc()
+            api_status_codes.labels(status_code='400').inc()
             return jsonify({"error": "No JSON data provided"}), 400
         
         # Extract threshold range
@@ -647,6 +839,8 @@ def threshold_analysis():
         probabilities = model_loader.model.predict_proba(X)
         
         if probabilities.shape[1] != 2:
+            api_error_rate.labels(error_type='model_capability_error').inc()
+            api_status_codes.labels(status_code='400').inc()
             return jsonify({"error": "Threshold analysis only available for binary classification"}), 400
         
         # Analyze across thresholds
@@ -664,6 +858,7 @@ def threshold_analysis():
                 "positive_rate": positive_count / len(predictions)
             })
         
+        api_status_codes.labels(status_code='200').inc()
         return jsonify({
             "probabilities": probabilities.tolist(),
             "threshold_analysis": results,
@@ -672,9 +867,12 @@ def threshold_analysis():
         
     except Exception as e:
         logger.error(f"Threshold analysis error: {e}")
+        api_error_rate.labels(error_type='analysis_error').inc()
+        api_status_codes.labels(status_code='500').inc()
         return jsonify({"error": f"Analysis failed: {str(e)}"}), 500
 
 @app.route('/features', methods=['GET'])
+@track_metrics
 def get_features():
     """Get feature information and examples"""
     feature_info = {
@@ -723,13 +921,18 @@ def get_features():
     return jsonify(feature_info)
 
 @app.route('/test', methods=['GET'])
+@track_metrics
 def test_prediction():
     """Test prediction with sample data"""
     try:
         if model_loader.model is None:
+            api_error_rate.labels(error_type='model_not_loaded').inc()
+            api_status_codes.labels(status_code='503').inc()
             return jsonify({"error": "Model not loaded"}), 503
         
         if not model_loader.feature_names:
+            api_error_rate.labels(error_type='model_capability_error').inc()
+            api_status_codes.labels(status_code='400').inc()
             return jsonify({"error": "No feature names available for testing"}), 400
         
         # Create test data
@@ -753,6 +956,7 @@ def test_prediction():
         # Make prediction
         result = model_loader.predict(test_data)
         
+        api_status_codes.labels(status_code='200').inc()
         return jsonify({
             "test_input": test_data,
             "prediction_result": result,
@@ -762,13 +966,53 @@ def test_prediction():
         
     except Exception as e:
         logger.error(f"Test prediction error: {e}")
+        api_error_rate.labels(error_type='test_error').inc()
+        api_status_codes.labels(status_code='500').inc()
         return jsonify({
             "error": f"Test prediction failed: {str(e)}",
             "status": "error"
         }), 500
 
+
+# Endpoint untuk mengambil metrik Prometheus
+@app.route('/metrics',  methods=['GET'])
+def metrics():
+    """Prometheus metrics endpoint"""
+    # Skip using the track_metrics decorator for this endpoint
+    # to avoid any potential interference
+    
+    try:
+        # Increment metrics manually without using the decorator
+        api_request_count.inc()
+        
+        # Generate the metrics data
+        metrics_data = generate_latest(REGISTRY)
+        
+        # Return a plain Response object with explicit mimetype
+        # This bypasses Flask's response processing pipeline
+        return Response(
+            metrics_data,
+            mimetype=CONTENT_TYPE_LATEST,
+            status=200
+        )
+        
+    except Exception as e:
+        logger.error(f"Metrics endpoint error: {e}")
+        logger.error(f"Exception traceback: {traceback.format_exc()}")
+        
+        # Return error as plain text, not HTML
+        return Response(
+            f"# Error generating metrics: {str(e)}",
+            mimetype="text/plain",
+            status=500
+        )
+
+
 @app.errorhandler(404)
 def not_found(error):
+    """Handle 404 errors"""
+    api_error_rate.labels(error_type='not_found').inc()
+    api_status_codes.labels(status_code='404').inc()
     return jsonify({
         "error": "Endpoint not found",
         "available_endpoints": [
@@ -782,16 +1026,40 @@ def not_found(error):
             "POST /predict - Make predictions with current threshold",
             "POST /predict_with_threshold - Predict with custom threshold",
             "POST /threshold_analysis - Analyze multiple thresholds",
-            "POST /reload - Reload model from file"
+            "POST /reload - Reload model from file",
+            "GET /metrics - Metrics for Prometheus"
         ]
     }), 404
 
 @app.errorhandler(500)
 def internal_error(error):
+    """Handle 500 errors"""
+    api_error_rate.labels(error_type='internal_server_error').inc()
+    api_status_codes.labels(status_code='500').inc()
     return jsonify({
         "error": "Internal server error",
         "message": "Please check server logs for details"
     }), 500
+
+@app.errorhandler(403)
+def forbidden_error(error):
+    """Handle 403 errors"""
+    api_error_rate.labels(error_type='forbidden').inc()
+    api_status_codes.labels(status_code='403').inc()
+    return jsonify({
+        "error": "Forbidden",
+        "message": "Access denied"
+    }), 403
+
+@app.errorhandler(400)
+def bad_request_error(error):
+    """Handle 400 errors"""
+    api_error_rate.labels(error_type='bad_request').inc()
+    api_status_codes.labels(status_code='400').inc()
+    return jsonify({
+        "error": "Bad request",
+        "message": "Invalid request format or parameters"
+    }), 400
 
 def initialize_app(model_path='output/models/best_model.pkl', threshold=0.5):
     """Initialize the application with threshold configuration"""
@@ -803,7 +1071,7 @@ def initialize_app(model_path='output/models/best_model.pkl', threshold=0.5):
     model_loader.model_path = model_path
     model_loader.threshold = threshold
     
-    # FIXED: Better error handling and logging
+    # Better error handling and logging
     try:
         logger.info(f"Attempting to load model from: {model_path}")
         logger.info(f"Default threshold: {threshold}")
@@ -846,7 +1114,7 @@ if __name__ == '__main__':
     parser.add_argument('--host', default='0.0.0.0', help='Host address')
     parser.add_argument('--port', type=int, default=5002, help='Port number')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument('--model', default='/app/output/models/best_model.pkl', help='Path to model file')
+    parser.add_argument('--model', default='output/models/best_model.pkl', help='Path to model file')
     parser.add_argument('--threshold', type=float, default=0.2, help='Default prediction threshold (0-1)')
     
     args = parser.parse_args()
@@ -856,7 +1124,7 @@ if __name__ == '__main__':
         logger.error("Threshold must be between 0 and 1")
         sys.exit(1)
     
-    # FIXED: Initialize app and check result
+    # Initialize app and check result
     init_success = initialize_app(args.model, args.threshold)
     
     if init_success:

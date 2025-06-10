@@ -1,0 +1,20 @@
+Credit Approval Model Information
+=================================
+
+Best Model: RF_optuna
+Test F1-Score: 0.6755
+Test Accuracy: 0.7133
+Test Approval Rate: 45.3%
+Training Date: 2025-06-10 18:02:28.131863
+
+Business Validation Results:
+  Passes Business Logic: True
+  Approval Rate: 45.3%
+
+Best Parameters:
+  n_estimators: 132
+  max_depth: 17
+  min_samples_split: 10
+  min_samples_leaf: 7
+  max_features: sqrt
+  class_weight: balanced

@@ -17,9 +17,13 @@ from sklearn.preprocessing import StandardScaler
 
 warnings.filterwarnings('ignore')
 
+from dotenv import load_dotenv
+load_dotenv()
+
 print("="*70)
 print("COMPREHENSIVE MODEL OPTIMIZATION - ROBUST VERSION")
 print("="*70)
+
 
 # ============================================================================
 # 2.5. ADVANCED FEATURE ENGINEERING - NEW ADDITION
@@ -197,7 +201,7 @@ def perform_intelligent_feature_selection(X_train, X_test, y_train, config, logg
         logger.info("Feature selection disabled, using all features")
         return X_train, X_test, X_train.columns.tolist()
     
-    logger.info("🎯 Performing intelligent feature selection...")
+    logger.info("Performing intelligent feature selection...")
     
     try:
         from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif
