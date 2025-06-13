@@ -47,7 +47,7 @@ def setup_mlflow_robust():
         import mlflow.sklearn
         print("✓ MLflow imported successfully")
     except ImportError:
-        print("❌ MLflow not installed. Install with: pip install mlflow")
+        print("MLflow not installed. Install with: pip install mlflow")
         return None, False, "none"
     
     # Get DagsHub credentials
@@ -69,7 +69,7 @@ def setup_mlflow_robust():
     # Strategy 1: Try DagsHub with timeout and proper error handling
     if dagshub_url and dagshub_username and dagshub_token:
         try:
-            print("\n🔄 Attempting DagsHub connection...")
+            print("\nAttempting DagsHub connection...")
             
             # Import and initialize DagsHub
             try:
@@ -81,7 +81,7 @@ def setup_mlflow_robust():
                 )
                 print("✓ DagsHub initialized")
             except Exception as e:
-                print(f"⚠️ DagsHub init warning: {e}")
+                print(f"DagsHub init warning: {e}")
             
             # Setup environment variables
             os.environ['MLFLOW_TRACKING_USERNAME'] = dagshub_username
