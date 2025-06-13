@@ -11,7 +11,7 @@ env:
   DAGSHUB_REPO_URL: ${{ secrets.DAGSHUB_REPO_URL }}
   MODEL_NAME: ${{ secrets.MODEL_NAME }}
   EXPERIMENT_NAME: credit-approval-prediction
-  
+
 jobs:
   run-mlflow:
     runs-on: ubuntu-latest
@@ -46,7 +46,7 @@ jobs:
         echo "DAGSHUB_TOKEN=$DAGSHUB_TOKEN" >> $GITHUB_ENV
         echo "DAGSHUB_REPO_URL=$DAGSHUB_REPO_URL" >> $GITHUB_ENV
         echo "MODEL_NAME=$MODEL_NAME" >> $GITHUB_ENV
-        echo "EXPERIMENT_NAME=credit-approval-prediction" >> $GITHUB_ENV
+        echo "EXPERIMENT_NAME=$EXPERIMENT_NAME" >> $GITHUB_ENV
 
         echo "MLFLOW_TRACKING_URI=$DAGSHUB_REPO_URL.mlflow" >> $GITHUB_ENV
         echo "MLFLOW_TRACKING_USERNAME=$DAGSHUB_USERNAME" >> $GITHUB_ENV
