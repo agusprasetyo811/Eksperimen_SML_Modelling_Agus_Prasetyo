@@ -21,6 +21,7 @@ import sys
 import time
 from datetime import datetime
 import joblib
+import uuid
 
 print("="*60)
 print("CREDIT APPROVAL PREDICTION - MODELLING STAGE")
@@ -34,12 +35,12 @@ else:
     print(f"✓ Output directory already exists: {output_dir}")
 
 # ============================================================================
-# 0. ROBUST MLFLOW SETUP WITH DAGSHUB INTEGRATION
+# 0. ROBUST MLFLOW SETUP WITH DAGSHUB INTEGRATION - FIXED VERSION
 # ============================================================================
 
 def setup_mlflow_robust():
-    """Setup MLflow dengan robust fallback untuk DagsHub connection issues"""
-    print("\n0. Setting up MLflow with DagsHub (Robust Version)...")
+    """Setup MLflow dengan robust fallback untuk DagsHub connection issues - CI/CD friendly"""
+    print("\n0. Setting up MLflow with DagsHub (CI/CD Fixed Version)...")
     
     # Import MLflow
     try:
@@ -66,22 +67,10 @@ def setup_mlflow_robust():
     print(f"  Experiment: {experiment_name}")
     print(f"  Model Name: {model_name}")
     
-    # Strategy 1: Try DagsHub with timeout and proper error handling
+    # Strategy 1: Try DagsHub with simplified setup
     if dagshub_url and dagshub_username and dagshub_token:
         try:
             print("\nAttempting DagsHub connection...")
-            
-            # Import and initialize DagsHub
-            # try:
-            #     import dagshub
-            #     dagshub.init(
-            #         repo_owner='agusprasetyo811',
-            #         repo_name='kredit_pinjaman_1',
-            #         mlflow=True
-            #     )
-            #     print("✓ DagsHub initialized")
-            # except Exception as e:
-            #     print(f"DagsHub init warning: {e}")
             
             # Setup environment variables
             os.environ['MLFLOW_TRACKING_USERNAME'] = dagshub_username
@@ -92,58 +81,61 @@ def setup_mlflow_robust():
             mlflow.set_tracking_uri(tracking_uri)
             print(f"✓ Tracking URI set: {tracking_uri}")
             
-            # Test connection with timeout
-            def test_dagshub_connection():
-                """Test DagsHub connection with simple operation"""
+            # Simple connection test - just set experiment without creating test runs
+            def test_dagshub_connection_simple():
+                """Simplified connection test for CI/CD environments"""
                 try:
                     # Set timeout for HTTP requests
                     import socket
-                    socket.setdefaulttimeout(15)  # 15 second timeout
+                    original_timeout = socket.getdefaulttimeout()
+                    socket.setdefaulttimeout(10)  # 10 second timeout
                     
-                    # Try to get tracking URI info
-                    current_uri = mlflow.get_tracking_uri()
-                    print(f"   Testing connection to: {current_uri}")
-                    
-                    # Try to create/get experiment (quick test)
                     try:
+                        # Try to get or create experiment (simplified)
                         exp = mlflow.get_experiment_by_name(experiment_name)
                         if exp:
+                            experiment_id = exp.experiment_id
                             mlflow.set_experiment(experiment_name)
-                            print(f"✓ Using existing experiment: {experiment_name}")
+                            print(f"✓ Using existing experiment: {experiment_name} (ID: {experiment_id})")
                         else:
-                            mlflow.create_experiment(experiment_name)
-                            print(f"✓ Created new experiment: {experiment_name}")
+                            # Create experiment with safe tags
+                            experiment_id = mlflow.create_experiment(
+                                name=experiment_name,
+                                tags={
+                                    "environment": "ci_cd",
+                                    "project": "credit_approval",
+                                    "created_by": "automated_pipeline"
+                                }
+                            )
+                            print(f"✓ Created new experiment: {experiment_name} (ID: {experiment_id})")
+                        
+                        # Reset timeout
+                        socket.setdefaulttimeout(original_timeout)
+                        return True
+                        
                     except Exception as e:
-                        print(f"   Experiment setup issue: {e}")
-                        # Try with default experiment
-                        mlflow.set_experiment("Default")
-                    
-                    # Test with a simple run (simplified test)
-                    try:
-                        with mlflow.start_run(run_name="connection_test", nested=False):
-                            mlflow.log_param("test_param", "connection_ok")
-                            mlflow.log_metric("test_metric", 1.0)
-                            run_id = mlflow.active_run().info.run_id
-                            print(f"✓ Test run created: {run_id[:8]}...")
-                    except Exception as e:
-                        print(f"   Simple connection test: {e}")
-                        # This is expected if DagsHub has issues, continue anyway
-                    
-                    socket.setdefaulttimeout(None)  # Reset timeout
-                    return True
+                        socket.setdefaulttimeout(original_timeout)
+                        print(f"   Experiment setup failed: {e}")
+                        
+                        # Try with default experiment as fallback
+                        try:
+                            mlflow.set_experiment("Default")
+                            print("✓ Using Default experiment as fallback")
+                            return True
+                        except Exception as e2:
+                            print(f"   Default experiment fallback failed: {e2}")
+                            return False
                     
                 except Exception as e:
-                    socket.setdefaulttimeout(None)  # Reset timeout
                     print(f"   Connection test failed: {e}")
-                    print("   This is likely a DagsHub server issue, falling back to local...")
                     return False
             
             # Test connection
-            if test_dagshub_connection():
+            if test_dagshub_connection_simple():
                 print("DagsHub MLflow connection successful!")
                 return mlflow, True, "dagshub"
             else:
-                raise Exception("DagsHub connection test failed - server issues")
+                raise Exception("DagsHub connection test failed")
                 
         except Exception as e:
             print(f"DagsHub setup failed: {e}")
@@ -263,20 +255,22 @@ def explore_data(X_train, X_test, y_train, y_test, mlflow=None):
     print(f"   Training set: {missing_train} missing values")
     print(f"   Testing set: {missing_test} missing values")
     
-    # Safe MLflow logging
+    # Safe MLflow logging with validation
     if mlflow:
         try:
-            mlflow.log_param("train_samples", X_train.shape[0])
-            mlflow.log_param("test_samples", X_test.shape[0])
-            mlflow.log_param("n_features", X_train.shape[1])
-            mlflow.log_param("numeric_features_count", len(numeric_features))
-            mlflow.log_param("boolean_features_count", len(boolean_features))
-            mlflow.log_param("missing_values_train", missing_train)
-            mlflow.log_param("missing_values_test", missing_test)
+            # Log basic parameters
+            mlflow.log_param("train_samples", int(X_train.shape[0]))
+            mlflow.log_param("test_samples", int(X_test.shape[0]))
+            mlflow.log_param("n_features", int(X_train.shape[1]))
+            mlflow.log_param("numeric_features_count", int(len(numeric_features)))
+            mlflow.log_param("boolean_features_count", int(len(boolean_features)))
+            mlflow.log_param("missing_values_train", int(missing_train))
+            mlflow.log_param("missing_values_test", int(missing_test))
             
             # Log target distribution
-            approval_rate = counts[1] / len(y_train) if len(counts) > 1 else 0
-            mlflow.log_param("approval_rate", round(approval_rate, 3))
+            if len(counts) > 1:
+                approval_rate = float(counts[1] / len(y_train))
+                mlflow.log_param("approval_rate", round(approval_rate, 4))
             
         except Exception as e:
             print(f"   MLflow logging warning: {e}")
@@ -304,11 +298,11 @@ def initialize_models():
     return models
 
 # ============================================================================
-# 4. SAFE MODEL TRAINING WITH MLFLOW
+# 4. SAFE MODEL TRAINING WITH MLFLOW - FIXED VERSION
 # ============================================================================
 
 def train_and_predict_safe(models, X_train, X_test, y_train, y_test, mlflow=None, mlflow_available=False):
-    """Training semua models dengan safe MLflow logging"""
+    """Training semua models dengan safe MLflow logging - no nested runs"""
     print("\n4. Training Models...")
     
     trained_models = {}
@@ -318,17 +312,8 @@ def train_and_predict_safe(models, X_train, X_test, y_train, y_test, mlflow=None
     for name, model in models.items():
         print(f"\nTraining {name}...")
         
-        # Create individual run only if MLflow is available
-        if mlflow_available and mlflow:
-            try:
-                with mlflow.start_run(run_name=f"{name.replace(' ', '_')}_{datetime.now().strftime('%H%M%S')}", nested=True):
-                    result = train_single_model(name, model, X_train, X_test, y_train, y_test, mlflow, True)
-            except Exception as e:
-                print(f"   MLflow nested run failed: {e}")
-                print("   Continuing with basic training...")
-                result = train_single_model(name, model, X_train, X_test, y_train, y_test, mlflow, False)
-        else:
-            result = train_single_model(name, model, X_train, X_test, y_train, y_test, mlflow, False)
+        # Train without nested runs to avoid CI/CD issues
+        result = train_single_model(name, model, X_train, X_test, y_train, y_test, mlflow, mlflow_available)
         
         if result:
             trained_models[name] = result['model']
@@ -338,7 +323,7 @@ def train_and_predict_safe(models, X_train, X_test, y_train, y_test, mlflow=None
     return trained_models, predictions, model_results
 
 def train_single_model(name, model, X_train, X_test, y_train, y_test, mlflow=None, log_to_mlflow=False):
-    """Train single model dengan safe logging"""
+    """Train single model dengan safe logging - no nested runs"""
     try:
         # Training
         start_time = time.time()
@@ -370,24 +355,27 @@ def train_single_model(name, model, X_train, X_test, y_train, y_test, mlflow=Non
             cv_mean, cv_std = 0, 0
             cv_scores = []
         
-        # Safe MLflow logging
+        # Safe MLflow logging with parameter validation
         if log_to_mlflow and mlflow:
             try:
-                mlflow.log_param("model_name", name)
-                mlflow.log_param("model_type", type(model).__name__)
-                mlflow.log_metric("training_time_seconds", training_time)
-                mlflow.log_metric("accuracy", accuracy)
-                mlflow.log_metric("precision", precision)
-                mlflow.log_metric("recall", recall)
-                mlflow.log_metric("f1_score", f1)
-                mlflow.log_metric("cv_mean_score", cv_mean)
-                mlflow.log_metric("cv_std_score", cv_std)
+                # Create safe parameter names
+                safe_model_name = name.replace(' ', '_').replace('-', '_').lower()
+                
+                # Log parameters with validation
+                mlflow.log_param(f"{safe_model_name}_model_type", type(model).__name__)
+                mlflow.log_metric(f"{safe_model_name}_training_time_seconds", float(training_time))
+                mlflow.log_metric(f"{safe_model_name}_accuracy", float(accuracy))
+                mlflow.log_metric(f"{safe_model_name}_precision", float(precision))
+                mlflow.log_metric(f"{safe_model_name}_recall", float(recall))
+                mlflow.log_metric(f"{safe_model_name}_f1_score", float(f1))
+                mlflow.log_metric(f"{safe_model_name}_cv_mean_score", float(cv_mean))
+                mlflow.log_metric(f"{safe_model_name}_cv_std_score", float(cv_std))
                 
                 if roc_auc is not None:
-                    mlflow.log_metric("roc_auc", roc_auc)
+                    mlflow.log_metric(f"{safe_model_name}_roc_auc", float(roc_auc))
                 
-                # Log model
-                mlflow.sklearn.log_model(model, f"model_{name.lower().replace(' ', '_')}")
+                # Log model with safe name
+                mlflow.sklearn.log_model(model, f"model_{safe_model_name}")
                 
             except Exception as e:
                 print(f"     MLflow logging failed: {e}")
@@ -463,11 +451,11 @@ def evaluate_models(predictions, y_test, model_results=None):
     return results
 
 # ============================================================================
-# 6. MODEL RECOMMENDATION & SAVING
+# 6. MODEL RECOMMENDATION & SAVING - FIXED VERSION
 # ============================================================================
 
 def model_recommendation_and_save(results, trained_models, mlflow=None, mlflow_available=False):
-    """Rekomendasi model terbaik dan save model"""
+    """Rekomendasi model terbaik dan save model - no nested runs"""
     print("\n6. Model Recommendation & Saving...")
     
     # Find best model based on F1-score
@@ -505,29 +493,31 @@ def model_recommendation_and_save(results, trained_models, mlflow=None, mlflow_a
     except Exception as e:
         print(f"Model saving failed: {e}")
     
-    # Safe MLflow logging
+    # Safe MLflow logging without nested runs
     if mlflow_available and mlflow:
         try:
-            with mlflow.start_run(run_name=f"best_model_{datetime.now().strftime('%H%M%S')}", nested=True):
-                mlflow.log_param("best_model_name", best_f1_name)
-                mlflow.log_metric("best_f1_score", best_f1_metrics['f1_score'])
-                mlflow.log_metric("best_accuracy", best_f1_metrics['accuracy'])
-                mlflow.log_metric("best_precision", best_f1_metrics['precision'])
-                mlflow.log_metric("best_recall", best_f1_metrics['recall'])
-                
-                # Log best model
-                best_model = trained_models[best_f1_name]
-                mlflow.sklearn.log_model(best_model, "best_model")
-                
-                # Try to register model
-                try:
-                    model_name = os.getenv('MODEL_NAME', 'credit_approval_model')
-                    run_id = mlflow.active_run().info.run_id
-                    model_uri = f"runs:/{run_id}/best_model"
-                    mlflow.register_model(model_uri, model_name)
-                    print(f"✓ Model registered as: {model_name}")
-                except Exception as e:
-                    print(f"   Model registration warning: {e}")
+            # Log best model metrics directly to current run
+            safe_best_name = best_f1_name.replace(' ', '_').replace('-', '_').lower()
+            
+            mlflow.log_param("best_model_name", best_f1_name)
+            mlflow.log_metric("best_f1_score", float(best_f1_metrics['f1_score']))
+            mlflow.log_metric("best_accuracy", float(best_f1_metrics['accuracy']))
+            mlflow.log_metric("best_precision", float(best_f1_metrics['precision']))
+            mlflow.log_metric("best_recall", float(best_f1_metrics['recall']))
+            
+            # Log best model
+            best_model = trained_models[best_f1_name]
+            mlflow.sklearn.log_model(best_model, "best_model")
+            
+            # Try to register model
+            try:
+                model_name = os.getenv('MODEL_NAME', 'credit_approval_model')
+                run_id = mlflow.active_run().info.run_id
+                model_uri = f"runs:/{run_id}/best_model"
+                mlflow.register_model(model_uri, model_name)
+                print(f"✓ Model registered as: {model_name}")
+            except Exception as e:
+                print(f"   Model registration warning: {e}")
                 
         except Exception as e:
             print(f"   MLflow best model logging failed: {e}")
@@ -535,11 +525,11 @@ def model_recommendation_and_save(results, trained_models, mlflow=None, mlflow_a
     return best_f1_name, best_f1_metrics
 
 # ============================================================================
-# 7. MAIN EXECUTION
+# 7. MAIN EXECUTION - FIXED VERSION
 # ============================================================================
 
 def main():
-    """Main execution function"""
+    """Main execution function - CI/CD friendly"""
     print("Starting Credit Approval Modeling Pipeline...")
     
     # Setup MLflow
@@ -551,19 +541,24 @@ def main():
         print("Failed to load data. Exiting...")
         return
     
-    # Start main experiment
+    # Start main experiment with safe run creation
     if mlflow_available and mlflow:
         try:
-            with mlflow.start_run(run_name=f"credit_approval_main_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
-                # Log experiment info
+            # Create safe run name
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            run_name = f"credit_approval_main_{timestamp}"
+            
+            with mlflow.start_run(run_name=run_name):
+                # Log experiment info with type validation
                 mlflow.log_param("experiment_date", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-                mlflow.log_param("tracking_type", tracking_type)
+                mlflow.log_param("tracking_type", str(tracking_type))
                 mlflow.log_param("experiment_type", "credit_approval_modeling")
+                mlflow.log_param("pipeline_version", "2.0_fixed")
                 
                 # Run pipeline
                 run_modeling_pipeline(X_train, X_test, y_train, y_test, mlflow, mlflow_available)
                 
-                mlflow.log_metric("experiment_success", 1)
+                mlflow.log_metric("experiment_success", 1.0)
                 
         except Exception as e:
             print(f"MLflow main experiment failed: {e}")
