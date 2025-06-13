@@ -72,16 +72,16 @@ def setup_mlflow_robust():
             print("\nAttempting DagsHub connection...")
             
             # Import and initialize DagsHub
-            # try:
-            #     import dagshub
-            #     dagshub.init(
-            #         repo_owner='agusprasetyo811',
-            #         repo_name='kredit_pinjaman_1',
-            #         mlflow=True
-            #     )
-            #     print("✓ DagsHub initialized")
-            # except Exception as e:
-            #     print(f"DagsHub init warning: {e}")
+            try:
+                import dagshub
+                dagshub.init(
+                    repo_owner='agusprasetyo811',
+                    repo_name='kredit_pinjaman_1',
+                    mlflow=True
+                )
+                print("✓ DagsHub initialized")
+            except Exception as e:
+                print(f"DagsHub init warning: {e}")
             
             # Setup environment variables
             os.environ['MLFLOW_TRACKING_USERNAME'] = dagshub_username
@@ -140,18 +140,18 @@ def setup_mlflow_robust():
             
             # Test connection
             if test_dagshub_connection():
-                print("DagsHub MLflow connection successful!")
+                print("✅ DagsHub MLflow connection successful!")
                 return mlflow, True, "dagshub"
             else:
                 raise Exception("DagsHub connection test failed - server issues")
                 
         except Exception as e:
-            print(f"DagsHub setup failed: {e}")
-            print("Falling back to local MLflow...")
+            print(f"❌ DagsHub setup failed: {e}")
+            print("🔄 Falling back to local MLflow...")
     
     # Strategy 2: Fallback to local MLflow
     try:
-        print("\nSetting up local MLflow...")
+        print("\n🔄 Setting up local MLflow...")
         
         # Use local file-based tracking
         local_mlruns_dir = "./mlruns"
@@ -170,7 +170,7 @@ def setup_mlflow_robust():
         except:
             mlflow.set_experiment("Default")
         
-        print(f"Local MLflow setup successful!")
+        print(f"✅ Local MLflow setup successful!")
         print(f"   Tracking URI: {local_uri}")
         print(f"   Experiment: {experiment_name}")
         print(f"   MLruns directory: {local_mlruns_dir}")
@@ -179,8 +179,8 @@ def setup_mlflow_robust():
         return mlflow, True, "local"
         
     except Exception as e:
-        print(f"Local MLflow setup failed: {e}")
-        print("Continuing without MLflow tracking...")
+        print(f"❌ Local MLflow setup failed: {e}")
+        print("⚠️ Continuing without MLflow tracking...")
         return None, False, "none"
 
 # ============================================================================
@@ -202,7 +202,7 @@ def load_data():
         
         missing_files = [f for f in required_files if not os.path.exists(f)]
         if missing_files:
-            print(f"Missing files: {missing_files}")
+            print(f"❌ Missing files: {missing_files}")
             return None, None, None, None
         
         # Load training data
@@ -223,7 +223,7 @@ def load_data():
         return X_train, X_test, y_train, y_test
         
     except Exception as e:
-        print(f"Error loading data: {e}")
+        print(f"❌ Error loading data: {e}")
         return None, None, None, None
 
 # ============================================================================
@@ -410,7 +410,7 @@ def train_single_model(name, model, X_train, X_test, y_train, y_test, mlflow=Non
         }
         
     except Exception as e:
-        print(f"Training failed for {name}: {e}")
+        print(f"❌ Training failed for {name}: {e}")
         return None
 
 # ============================================================================
@@ -503,7 +503,7 @@ def model_recommendation_and_save(results, trained_models, mlflow=None, mlflow_a
         print(f"✓ Model info saved: {info_file}")
         
     except Exception as e:
-        print(f"Model saving failed: {e}")
+        print(f"❌ Model saving failed: {e}")
     
     # Safe MLflow logging
     if mlflow_available and mlflow:
@@ -548,7 +548,7 @@ def main():
     # Load data
     X_train, X_test, y_train, y_test = load_data()
     if X_train is None:
-        print("Failed to load data. Exiting...")
+        print("❌ Failed to load data. Exiting...")
         return
     
     # Start main experiment
