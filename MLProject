@@ -7,14 +7,14 @@ entry_points:
   test_connection:
     command: "python test_dagshub_connection.py"
     
-  # Basic modeling with 3 algorithms - FIXED VERSION
+  # Basic modeling with 3 algorithms (Logistic Regression, Random Forest, Decision Tree)
   basic_modeling:
     parameters:
       experiment_name: {type: str, default: "credit-approval-basic"}
       model_name: {type: str, default: "credit_approval_model"}
-    command: "python modelling.py --experiment_name {experiment_name} --model_name {model_name}"
+    command: "EXPERIMENT_NAME={experiment_name} MODEL_NAME={model_name} python modelling.py"
     
-  # Advanced hyperparameter tuning - FIXED VERSION  
+  # Advanced hyperparameter tuning with business validation
   advanced_tuning:
     parameters:
       # Regularization parameters
@@ -36,11 +36,4 @@ entry_points:
       # Experiment settings
       experiment_name: {type: str, default: "credit-approval-tuning"}
       model_name: {type: str, default: "credit_approval_model_tuned"}
-    command: "python modelling_tuning.py --alpha {alpha} --l1_ratio {l1_ratio} --min_approval_rate {min_approval_rate} --max_approval_rate {max_approval_rate} --target_approval_rate {target_approval_rate} --n_iter_optuna {n_iter_optuna} --grid_search_iter {grid_search_iter} --random_state {random_state} --experiment_name {experiment_name} --model_name {model_name}"
-
-  # Alternative version using shell script (if needed)
-  basic_modeling_alt:
-    parameters:
-      experiment_name: {type: str, default: "credit-approval-basic"}
-      model_name: {type: str, default: "credit_approval_model"}
-    command: "bash -c 'export EXPERIMENT_NAME={experiment_name} && export MODEL_NAME={model_name} && python modelling.py'"
+    command: "MIN_APPROVAL_RATE={min_approval_rate} MAX_APPROVAL_RATE={max_approval_rate} TARGET_APPROVAL_RATE={target_approval_rate} N_ITER_OPTUNA={n_iter_optuna} GRID_SEARCH_ITER={grid_search_iter} RANDOM_STATE={random_state} EXPERIMENT_NAME={experiment_name} MODEL_NAME={model_name} python modelling_tuning.py --alpha {alpha} --l1_ratio {l1_ratio}"
