@@ -47,9 +47,6 @@ jobs:
         mlflow --version
     - name: Run basic modeling
       shell: bash -l {0}
-      env: 
-        MLFLOW_TRACKING_USERNAME: ${{ vars.DAGSHUB_USERNAME }}
-        MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
       run: |
         mlflow run . -e basic_modeling
 
