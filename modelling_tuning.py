@@ -163,9 +163,6 @@ def setup_mlflow_with_robust_fallback(config):
                     current_uri = mlflow.get_tracking_uri()
                     print(f"   Testing connection to: {current_uri}")
                     
-                    # Test 2: Try to get or create experiment with timeout
-                    experiment_name = config.experiment_name
-                    
                     # Use shorter operation timeouts
                     import signal
                     def timeout_handler(signum, frame):
