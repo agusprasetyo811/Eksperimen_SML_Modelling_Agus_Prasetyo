@@ -72,16 +72,16 @@ def setup_mlflow_robust():
             print("\nAttempting DagsHub connection...")
             
             # Import and initialize DagsHub
-            try:
-                import dagshub
-                dagshub.init(
-                    repo_owner='agusprasetyo811',
-                    repo_name='kredit_pinjaman_1',
-                    mlflow=True
-                )
-                print("✓ DagsHub initialized")
-            except Exception as e:
-                print(f"DagsHub init warning: {e}")
+            # try:
+            #     import dagshub
+            #     dagshub.init(
+            #         repo_owner='agusprasetyo811',
+            #         repo_name='kredit_pinjaman_1',
+            #         mlflow=True
+            #     )
+            #     print("✓ DagsHub initialized")
+            # except Exception as e:
+            #     print(f"DagsHub init warning: {e}")
             
             # Setup environment variables
             os.environ['MLFLOW_TRACKING_USERNAME'] = dagshub_username
