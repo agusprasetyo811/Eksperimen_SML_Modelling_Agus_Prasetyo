@@ -5,60 +5,77 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
-
-# ENV GLOBAL (berlaku untuk semua jobs dan steps)
 env:
   DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
   DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
   DAGSHUB_REPO_URL: ${{ secrets.DAGSHUB_REPO_URL }}
   MODEL_NAME: ${{ secrets.MODEL_NAME }}
   EXPERIMENT_NAME: credit-approval-prediction
-
+  
 jobs:
   run-mlflow:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Miniconda
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        miniconda-version: 'latest'
+        activate-environment: mlflow-env
+        environment-file: conda.yaml
+        auto-activate-base: false
+        auto-update-conda: true
+        
+    - name: Install additional dependencies
+      shell: bash -l {0}
+      run: |
+        pip install dagshub
+        
+    - name: Configure DagsHub
+      shell: bash -l {0}
+      env:
+        DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+        DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+        DAGSHUB_REPO_URL: ${{ secrets.DAGSHUB_REPO_URL }}
+        MODEL_NAME: ${{ secrets.MODEL_NAME }}
+      run: |
+        echo "DAGSHUB_USERNAME=$DAGSHUB_USERNAME" >> $GITHUB_ENV
+        echo "DAGSHUB_TOKEN=$DAGSHUB_TOKEN" >> $GITHUB_ENV
+        echo "DAGSHUB_REPO_URL=$DAGSHUB_REPO_URL" >> $GITHUB_ENV
+        echo "MODEL_NAME=$MODEL_NAME" >> $GITHUB_ENV
+        echo "EXPERIMENT_NAME=credit-approval-prediction" >> $GITHUB_ENV
 
-      - name: Setup Miniconda
-        uses: conda-incubator/setup-miniconda@v2
-        with:
-          miniconda-version: 'latest'
-          activate-environment: mlflow-env
-          environment-file: conda.yaml
-          auto-activate-base: false
-          auto-update-conda: true
-
-      - name: Install additional dependencies
-        shell: bash -l {0}
-        run: |
-          pip install dagshub
-
-      - name: Debug env (sementara)
-        shell: bash -l {0}
-        run: |
-          echo "DAGSHUB_REPO_URL=$DAGSHUB_REPO_URL"
-          echo "DAGSHUB_USERNAME=$DAGSHUB_USERNAME"
-          echo "EXPERIMENT_NAME=$EXPERIMENT_NAME"
-
-      - name: Run basic modeling
-        shell: bash -l {0}
-        run: |
-          mlflow run . -e basic_modeling
-
-      - name: Run advanced tuning
-        shell: bash -l {0}
-        run: |
-          mlflow run . -e advanced_tuning \
-            -P target_approval_rate=0.6 \
-            -P min_approval_rate=0.4 \
-            -P max_approval_rate=0.75 \
-            -P experiment_name="ci_run_${{ github.run_number }}"
-
-      - name: Check results
-        shell: bash -l {0}
-        run: |
-          echo "MLflow experiments completed successfully!"
-          echo "Check results at: $DAGSHUB_REPO_URL"
+        echo "MLFLOW_TRACKING_URI=$DAGSHUB_REPO_URL.mlflow" >> $GITHUB_ENV
+        echo "MLFLOW_TRACKING_USERNAME=$DAGSHUB_USERNAME" >> $GITHUB_ENV
+        echo "MLFLOW_TRACKING_PASSWORD=$DAGSHUB_TOKEN" >> $GITHUB_ENV
+        
+    - name: Verify environment
+      shell: bash -l {0}
+      run: |
+        conda info
+        conda list
+        python --version
+        mlflow --version
+        
+    - name: Run basic modeling
+      shell: bash -l {0}
+      run: |
+        mlflow run . -e basic_modeling
+        
+    - name: Run advanced tuning
+      shell: bash -l {0}
+      run: |
+        mlflow run . -e advanced_tuning \
+          -P target_approval_rate=0.6 \
+          -P min_approval_rate=0.4 \
+          -P max_approval_rate=0.75 \
+          -P experiment_name="ci_run_${{ github.run_number }}"
+          
+    - name: Check results
+      shell: bash -l {0}
+      run: |
+        echo "MLflow experiments completed successfully!"
+        echo "Check results at: ${{ secrets.DAGSHUB_REPO_URL }}"
