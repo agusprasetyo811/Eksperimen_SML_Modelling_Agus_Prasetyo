@@ -461,7 +461,7 @@ class Config:
             self.l1_ratio = 0.1
         
         # Directories
-        self.output_dir = "MLProject/output/models"
+        self.output_dir = "output"
         self.data_dir = "final_dataset"
         
         # Model settings - FROM ENVIRONMENT OR DEFAULTS
@@ -506,8 +506,7 @@ class Config:
         """Create necessary directories"""
         os.makedirs(self.output_dir, exist_ok=True)
         os.makedirs("logs", exist_ok=True)
-        os.makedirs("MLProject", exist_ok=True)
-        os.makedirs("MLProject/output", exist_ok=True)
+        
 
 def setup_logging():
     """Setup logging untuk debugging"""
