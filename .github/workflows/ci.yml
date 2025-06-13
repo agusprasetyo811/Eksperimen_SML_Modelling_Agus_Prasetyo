@@ -13,6 +13,11 @@ jobs:
     steps:
     - name: Debug environment variables
       shell: bash -l {0}
+      env:
+        DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+        DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+        DAGSHUB_REPO_URL: ${{ secrets.DAGSHUB_REPO_URL }}
+        MODEL_NAME: ${{ secrets.MODEL_NAME }}
       run: |
         echo "DAGSHUB_REPO_URL=$DAGSHUB_REPO_URL"
         echo "DAGSHUB_USERNAME=$DAGSHUB_USERNAME"
