@@ -116,12 +116,12 @@ def setup_mlflow_with_robust_fallback(config):
         import mlflow.sklearn
         print("✓ MLflow imported successfully")
     except ImportError:
-        print("❌ MLflow not installed. Install with: pip install mlflow")
+        print("MLflow not installed. Install with: pip install mlflow")
         return None, False, "none"
     
     # Strategy 1: Try DagsHub if credentials available
     if config.dagshub_url and config.dagshub_username and config.dagshub_token:
-        print("🔄 Attempting DagsHub connection...")
+        print("Attempting DagsHub connection...")
         
         try:
             # Import and initialize DagsHub (corrected repo name)
@@ -135,7 +135,7 @@ def setup_mlflow_with_robust_fallback(config):
             #     )
             #     print("✓ DagsHub initialized with correct repo name")
             # except Exception as e:
-            #     print(f"⚠️ DagsHub init warning: {e}")
+            #     print(f"DagsHub init warning: {e}")
             #     print("   Continuing with manual setup...")
             
             # Setup environment variables
@@ -217,18 +217,18 @@ def setup_mlflow_with_robust_fallback(config):
             
             # Perform connection test
             if test_dagshub_connection_robust():
-                print("✅ DagsHub MLflow connection successful!")
+                print("DagsHub MLflow connection successful!")
                 return mlflow, True, "dagshub"
             else:
                 raise Exception("DagsHub connection test failed")
                 
         except Exception as e:
-            print(f"❌ DagsHub setup failed: {e}")
-            print("🔄 Falling back to local MLflow...")
+            print(f"DagsHub setup failed: {e}")
+            print("Falling back to local MLflow...")
     
     # Strategy 2: Fallback to local MLflow with enhanced setup
     try:
-        print("🔄 Setting up local MLflow with enhanced configuration...")
+        print("Setting up local MLflow with enhanced configuration...")
         
         # Create local MLflow directory with better structure
         local_mlruns_dir = os.path.abspath("./mlruns")
@@ -263,7 +263,7 @@ def setup_mlflow_with_robust_fallback(config):
         except Exception as e:
             print(f"   Local test warning: {e}")
         
-        print(f"✅ Local MLflow setup successful!")
+        print(f"Local MLflow setup successful!")
         print(f"   Tracking URI: {local_uri}")
         print(f"   MLruns directory: {local_mlruns_dir}")
         print(f"   Web UI: run 'mlflow ui' in terminal to view results")
@@ -271,8 +271,8 @@ def setup_mlflow_with_robust_fallback(config):
         return mlflow, True, "local"
         
     except Exception as e:
-        print(f"❌ Local MLflow setup failed: {e}")
-        print("⚠️ Continuing without MLflow tracking...")
+        print(f"Local MLflow setup failed: {e}")
+        print("Continuing without MLflow tracking...")
         return None, False, "none"
 
 def setup_optuna_optional():
@@ -283,7 +283,7 @@ def setup_optuna_optional():
         print("✓ Optuna available for Bayesian optimization")
         return optuna, True
     except ImportError:
-        print("⚠️ Optuna not installed. Bayesian optimization will be skipped.")
+        print("Optuna not installed. Bayesian optimization will be skipped.")
         print("   Install with: pip install optuna")
         return None, False
 
@@ -1078,9 +1078,9 @@ def main():
             logger.warning(f"   Model may need further tuning before production")
             
         if tracking_type == "local":
-            logger.info(f"\n🌐 View results: run 'mlflow ui' in terminal")
+            logger.info(f"\nView results: run 'mlflow ui' in terminal")
         elif tracking_type == "dagshub":
-            logger.info(f"\n🌐 View results: {config.dagshub_url}")
+            logger.info(f"\nView results: {config.dagshub_url}")
             
     else:
         logger.error("Optimization failed - no valid models produced")

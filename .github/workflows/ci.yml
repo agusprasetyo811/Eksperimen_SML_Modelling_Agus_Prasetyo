@@ -37,7 +37,6 @@ jobs:
       shell: bash -l {0}
       run: |
         pip install dagshub mlflow
-
     - name: Verify environment
       shell: bash -l {0}
       run: |
@@ -45,11 +44,21 @@ jobs:
         conda list
         python --version
         mlflow --version
-    - name: Run basic modeling
+    - name: Debug auth
       shell: bash -l {0}
       run: |
+        echo "Tracking URI: $MLFLOW_TRACKING_URI"
+        echo "Username: $MLFLOW_TRACKING_USERNAME"
+        echo "Password set? -> ${MLFLOW_TRACKING_PASSWORD:+YES}"
+        
+        curl -u $MLFLOW_TRACKING_USERNAME:$MLFLOW_TRACKING_PASSWORD $MLFLOW_TRACKING_URI/api/2.0/mlflow/experiments/list
+    - name: Run basic modeling
+      shell: bash -l {0}
+      env: 
+        MLFLOW_TRACKING_USERNAME: ${{ vars.DAGSHUB_USERNAME }}
+        MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+      run: |
         mlflow run . -e basic_modeling
-
     - name: Run advanced tuning
       shell: bash -l {0}
       run: |
@@ -58,7 +67,6 @@ jobs:
           -P min_approval_rate=0.4 \
           -P max_approval_rate=0.75 \
           -P experiment_name="ci_run_${{ github.run_number }}"
-
     - name: Check results
       shell: bash -l {0}
       run: |
