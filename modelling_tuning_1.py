@@ -19,6 +19,16 @@ warnings.filterwarnings('ignore')
 
 from dotenv import load_dotenv
 load_dotenv()
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--alpha", type=float, default=0.5, help="Regularization strength (alpha)")
+parser.add_argument("--l1_ratio", type=float, default=0.1, help="ElasticNet mixing parameter (l1_ratio)")
+args = parser.parse_args()
+
+alpha = args.alpha
+l1_ratio = args.l1_ratio
+
 
 print("="*70)
 print("COMPREHENSIVE MODEL OPTIMIZATION - ROBUST VERSION")
@@ -507,37 +517,114 @@ def setup_logging():
     )
     return logging.getLogger(__name__)
 
-def setup_mlflow_optional(config):
-    """Setup MLflow dengan optional DagsHub integration"""
+def setup_mlflow_with_fallback(config):
+    """Setup MLflow dengan robust fallback untuk DagsHub issues"""
     try:
+        import dagshub
+        dagshub.init(repo_owner='agusprasetyo811',
+             repo_name='kredit_pinjaman',
+             mlflow=True)
+        
         import mlflow
+        with mlflow.start_run():
+            mlflow.log_param('parameter name', 'starting')
+            mlflow.log_metric('metric name', 1)
         import mlflow.sklearn
         
-        # Try DagsHub setup jika ada credentials
-        if config.dagshub_url and config.dagshub_username and config.dagshub_token:
+        # Fungsi untuk test connection
+        def test_mlflow_connection(uri):
+            """Test MLflow connection dengan timeout"""
             try:
-                mlflow.set_tracking_uri(config.dagshub_url + ".mlflow")
+                original_uri = mlflow.get_tracking_uri()
+                mlflow.set_tracking_uri(uri)
+                
+                # Test dengan create experiment
+                test_exp_name = f"connection_test_{int(time.time())}"
+                
+                # Quick timeout test
+                import signal
+                
+                def timeout_handler(signum, frame):
+                    raise Exception("Connection timeout")
+                
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(10)  # 10 second timeout
+                
+                try:
+                    exp_id = mlflow.create_experiment(test_exp_name, exist_ok=True)
+                    # Clean up test experiment
+                    try:
+                        mlflow.delete_experiment(exp_id)
+                    except:
+                        pass
+                    signal.alarm(0)
+                    return True
+                except:
+                    signal.alarm(0)
+                    return False
+                
+            except Exception as e:
+                print(f"Connection test failed: {e}")
+                return False
+        
+        # Strategy 1: Try DagsHub if credentials available
+        if config.dagshub_url and config.dagshub_username and config.dagshub_token:
+            print("🔄 Attempting DagsHub connection...")
+            
+            try:
+                # Setup DagsHub environment
+                dagshub_tracking_uri = config.dagshub_url
+                if not dagshub_tracking_uri.endswith('.mlflow'):
+                    dagshub_tracking_uri += '.mlflow'
+                
                 os.environ['MLFLOW_TRACKING_USERNAME'] = config.dagshub_username
                 os.environ['MLFLOW_TRACKING_PASSWORD'] = config.dagshub_token
-                print("✓ DagsHub MLflow tracking configured")
+                
+                # Test connection
+                if test_mlflow_connection(dagshub_tracking_uri):
+                    mlflow.set_tracking_uri(dagshub_tracking_uri)
+                    
+                    # Try to set experiment
+                    try:
+                        mlflow.set_experiment(config.experiment_name)
+                        print("✅ DagsHub MLflow connection successful!")
+                        return mlflow, True, "dagshub"
+                    except Exception as e:
+                        print(f"❌ DagsHub experiment setup failed: {e}")
+                        raise e
+                        
+                else:
+                    print("❌ DagsHub connection test failed")
+                    raise Exception("DagsHub unreachable")
+                    
             except Exception as e:
-                print(f"DagsHub setup failed: {e}")
-                print("   Using local MLflow tracking...")
-                mlflow.set_tracking_uri("file:./mlruns")
-        else:
-            print("No DagsHub credentials found, using local MLflow tracking")
-            mlflow.set_tracking_uri("file:./mlruns")
+                print(f"❌ DagsHub setup failed: {e}")
+                print("🔄 Falling back to local MLflow...")
+        
+        # Strategy 2: Fallback to local MLflow
+        print("🔄 Setting up local MLflow tracking...")
+        local_uri = "file:./mlruns"
+        mlflow.set_tracking_uri(local_uri)
+        
+        # Create mlruns directory if not exists
+        os.makedirs("./mlruns", exist_ok=True)
         
         # Set experiment
         mlflow.set_experiment(config.experiment_name)
-        print(f"✓ MLflow experiment set: {config.experiment_name}")
         
-        return mlflow, True
+        print(f"✅ Local MLflow setup successful!")
+        print(f"   Tracking URI: {local_uri}")
+        print(f"   Experiment: {config.experiment_name}")
+        
+        return mlflow, True, "local"
         
     except ImportError:
-        print("MLflow not installed. Optimization will run without tracking.")
-        print("   Install with: pip install mlflow")
-        return None, False
+        print("❌ MLflow not installed. Install with: pip install mlflow")
+        return None, False, "none"
+    except Exception as e:
+        print(f"❌ MLflow setup completely failed: {e}")
+        print("   Continuing without MLflow tracking...")
+        return None, False, "none"
 
 def setup_optuna_optional():
     """Setup Optuna dengan optional import"""
@@ -1389,10 +1476,11 @@ def main():
     # Setup
     config = Config()
     logger = setup_logging()
-    mlflow, mlflow_available = setup_mlflow_optional(config)
+    mlflow, mlflow_available, tracking_type = setup_mlflow_with_fallback(config)
     optuna, optuna_available = setup_optuna_optional()
     
     logger.info("Starting robust model optimization with business validation...")
+    logger.info(f"MLflow tracking: {tracking_type}")
     logger.info(f"Business constraints:")
     logger.info(f"  Target approval rate: {config.target_approval_rate:.1%}")
     logger.info(f"  Min approval rate: {config.min_approval_rate:.1%}")
@@ -1414,6 +1502,7 @@ def main():
     if mlflow_available:
         with mlflow.start_run(run_name=f"Robust_Model_Optimization_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
             # Log configuration
+            mlflow.log_param("tracking_type", tracking_type)
             mlflow.log_param("optimization_date", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             mlflow.log_param("baseline_f1", baseline['f1'])
             mlflow.log_param("baseline_approval_rate", baseline['business_validation']['approval_rate'])
@@ -1464,6 +1553,7 @@ def main():
         logger.info(f"  Best Approval Rate: {best_model['test_approval_rate']:.1%}")
         logger.info(f"  Total Improvement: {best_model['f1_improvement']:+.4f}")
         logger.info(f"  Best Model: {best_model['name']}")
+        logger.info(f"  MLflow Tracking: {tracking_type}")
         
         target_met = best_model['f1_improvement'] >= config.target_improvement
         business_valid = best_model.get('test_business_validation', {}).get('passes_business_logic', False)

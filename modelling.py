@@ -29,7 +29,7 @@ print("="*60)
 print("CREDIT APPROVAL PREDICTION - MODELLING STAGE")
 print("="*60)
 
-output_dir = "MLProject/output/models"
+output_dir = "output"
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
     print(f"✓ Output directory created: {output_dir}")
@@ -528,13 +528,6 @@ def model_recommendation(results, cv_results, trained_models):
             best_model = trained_models[best_f1_name]
             mlflow.sklearn.log_model(best_model, "best_model")
             
-            # Register model to MLflow Model Registry
-            run_id = mlflow.active_run().info.run_id
-            # register model 
-            mlflow.register_model(
-                model_uri=f"runs:/{run_id}/model",
-                name=os.getenv('MODEL_NAME')
-            )
             
             # Save model locally
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

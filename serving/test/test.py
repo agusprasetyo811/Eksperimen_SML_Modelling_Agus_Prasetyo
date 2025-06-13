@@ -3,7 +3,7 @@
 Quick Start Guide - Credit Approval API Testing
 Contoh cepat untuk test API dengan data realistic Indonesia
 
-Usage: python quick_start_guide.py
+Usage: python test.py
 """
 
 import requests
@@ -18,26 +18,26 @@ API_URL = "http://localhost:5001"
 def quick_test():
     """Test cepat dengan 5 contoh realistic"""
     
-    print("🚀 QUICK TEST - Credit Approval API")
+    print("QUICK TEST - Credit Approval API")
     print("=" * 50)
     
     # Test koneksi
     try:
         response = requests.get(f"{API_URL}/health")
         if response.status_code == 200:
-            print("✅ API connection successful")
+            print("API connection successful")
         else:
-            print("❌ API not healthy")
+            print("API not healthy")
             return
     except:
-        print("❌ Cannot connect to API")
+        print("Cannot connect to API")
         print("   Make sure server is running: python app.py --port 5002")
         return
     
     # 5 Test cases - siap pakai
     test_cases = [
         {
-            "name": "✅ SHOULD APPROVE - PNS dengan gaji bagus",
+            "name": "SHOULD APPROVE - PNS dengan gaji bagus",
             "data": {
                 "umur": 35.0,
                 "pendapatan": 12000000.0,  # 12 juta/bulan
@@ -61,7 +61,7 @@ def quick_test():
         },
         
         {
-            "name": "🤔 UNCERTAIN - Freelancer dengan income tinggi tapi tidak stabil",
+            "name": "UNCERTAIN - Freelancer dengan income tinggi tapi tidak stabil",
             "data": {
                 "umur": 28.0,
                 "pendapatan": 15000000.0,  # 15 juta (freelancer)
@@ -85,7 +85,7 @@ def quick_test():
         },
         
         {
-            "name": "❌ SHOULD REJECT - Fresh grad dengan pinjaman terlalu besar",
+            "name": "SHOULD REJECT - Fresh grad dengan pinjaman terlalu besar",
             "data": {
                 "umur": 23.0,
                 "pendapatan": 5000000.0,   # 5 juta/bulan
@@ -109,7 +109,7 @@ def quick_test():
         },
         
         {
-            "name": "✅ SHOULD APPROVE - Manager senior dengan track record bagus",
+            "name": "SHOULD APPROVE - Manager senior dengan track record bagus",
             "data": {
                 "umur": 42.0,
                 "pendapatan": 20000000.0,  # 20 juta/bulan
@@ -133,7 +133,7 @@ def quick_test():
         },
         
         {
-            "name": "❌ SHOULD REJECT - Credit score buruk dengan ratio tinggi",
+            "name": "SHOULD REJECT - Credit score buruk dengan ratio tinggi",
             "data": {
                 "umur": 30.0,
                 "pendapatan": 6000000.0,   # 6 juta/bulan
@@ -185,32 +185,29 @@ def quick_test():
                     
                     # Simple interpretation
                     if confidence > 0.8:
-                        print(f"💪 Model is very confident in this decision")
+                        print(f"Model is very confident in this decision")
                     elif confidence > 0.65:
-                        print(f"👍 Model is confident in this decision")
+                        print(f"Model is confident in this decision")
                     else:
                         print(f"🤔 Model is uncertain about this decision")
                 
             else:
-                print(f"❌ Prediction failed: {response.status_code}")
+                print(f"Prediction failed: {response.status_code}")
                 print(f"Error: {response.text}")
                 
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"Error: {e}")
         
         if i < len(test_cases):
             input("\nPress Enter to continue...")
     
     print(f"\n{'='*60}")
-    print("✅ Quick test completed!")
-    print("📝 For more detailed testing, use:")
-    print("   python mixed_test_scenarios.py")
-    print("   python batch_comparison_test.py")
+    print("Quick test completed!")
     print(f"{'='*60}")
 
 def custom_test():
     """Test dengan input custom dari user"""
-    print("\n🎯 CUSTOM INPUT TEST")
+    print("\nCUSTOM INPUT TEST")
     print("=" * 40)
     
     try:
@@ -276,7 +273,7 @@ def custom_test():
         }
         
         # Show summary
-        print(f"\n📊 Data Summary:")
+        print(f"\nData Summary:")
         print(f"   Umur: {umur} tahun")
         print(f"   Pekerjaan: {'Tetap' if pekerjaan_tetap else 'Kontrak' if pekerjaan_kontrak else 'Freelance'}")
         print(f"   Pendapatan: Rp {pendapatan:,}/bulan")
@@ -296,7 +293,7 @@ def custom_test():
             prediction = result['predictions'][0]
             
             decision = "✅ APPROVED" if prediction == 1 else "❌ REJECTED"
-            print(f"\n🎯 HASIL PREDIKSI: {decision}")
+            print(f"\nHASIL PREDIKSI: {decision}")
             
             if 'probabilities' in result:
                 prob_approve = result['probabilities'][0][1]
@@ -309,26 +306,26 @@ def custom_test():
                 # Interpretation
                 if prediction == 1:
                     if prob_approve > 0.8:
-                        print(f"💪 Sangat mungkin disetujui!")
+                        print(f"Sangat mungkin disetujui!")
                     elif prob_approve > 0.65:
-                        print(f"👍 Kemungkinan besar disetujui")
+                        print(f"Kemungkinan besar disetujui")
                     else:
-                        print(f"🤔 Mungkin disetujui, tapi perlu review")
+                        print(f"Mungkin disetujui, tapi perlu review")
                 else:
                     if prob_reject > 0.8:
-                        print(f"🚫 Sangat mungkin ditolak")
+                        print(f"Sangat mungkin ditolak")
                     elif prob_reject > 0.65:
-                        print(f"👎 Kemungkinan besar ditolak")
+                        print(f"Kemungkinan besar ditolak")
                     else:
-                        print(f"⚠️ Mungkin ditolak, borderline case")
+                        print(f"Mungkin ditolak, borderline case")
         else:
-            print(f"❌ Error: {response.status_code}")
+            print(f"Error: {response.status_code}")
             print(response.text)
             
     except ValueError:
-        print("❌ Input tidak valid. Pastikan angka dimasukkan dengan benar.")
+        print("Input tidak valid. Pastikan angka dimasukkan dengan benar.")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
 
 def show_help():
     """Show help and available commands"""
@@ -366,7 +363,7 @@ def show_help():
    GET  /test      - Sample prediction
    POST /predict   - Make predictions
 
-📋 EXAMPLE API CALLS:
+EXAMPLE API CALLS:
 
 # Check if API is running
 curl http://localhost:5002/health
@@ -377,7 +374,7 @@ curl http://localhost:5002/info
 # Test sample prediction
 curl http://localhost:5002/test
 
-🚀 START HERE: Run 'python quick_start_guide.py' for immediate testing!
+START HERE: Run 'python quick_start_guide.py' for immediate testing!
     """)
 
 if __name__ == "__main__":

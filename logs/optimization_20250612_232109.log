@@ -1,0 +1,45 @@
+2025-06-12 23:21:13,832 - INFO - Starting robust model optimization with business validation...
+2025-06-12 23:21:13,832 - INFO - Business constraints:
+2025-06-12 23:21:13,832 - INFO -   Target approval rate: 60.0%
+2025-06-12 23:21:13,832 - INFO -   Min approval rate: 30.0%
+2025-06-12 23:21:13,832 - INFO -   Max approval rate: 80.0%
+2025-06-12 23:21:13,832 - INFO - Loading and validating data...
+2025-06-12 23:21:13,844 - INFO - CLASS BALANCE ANALYSIS:
+2025-06-12 23:21:13,845 - INFO -   Training approval rate: 0.430 (1031/2400)
+2025-06-12 23:21:13,845 - INFO -   Test approval rate: 0.430 (258/600)
+2025-06-12 23:21:13,845 - INFO - OPTIMAL CLASS WEIGHTS (targeting 60.0% approval):
+2025-06-12 23:21:13,845 - INFO -   Class 0 (Reject): 1.000
+2025-06-12 23:21:13,845 - INFO -   Class 1 (Approve): 0.667
+2025-06-12 23:21:13,852 - INFO - Data loaded successfully:
+2025-06-12 23:21:13,852 - INFO -   Training: 2400 samples, 17 features
+2025-06-12 23:21:13,852 - INFO -   Testing: 600 samples
+2025-06-12 23:21:13,852 - INFO -   Optimization split: 1920 train, 480 validation
+2025-06-12 23:21:13,852 - INFO - Calculating baseline performance...
+2025-06-12 23:21:13,852 - INFO -   Testing Default RF...
+2025-06-12 23:21:14,915 - INFO - Business logic validation for Default RF...
+2025-06-12 23:21:14,929 - INFO -   Default RF passes business logic validation
+2025-06-12 23:21:14,929 - INFO -      Approval rate: 42.9%
+2025-06-12 23:21:14,929 - INFO -     F1: 0.6507, Acc: 0.7083, CV: 0.6584
+2025-06-12 23:21:14,929 - INFO -     Approval Rate: 42.9%
+2025-06-12 23:21:14,929 - INFO -     Business Logic: PASS
+2025-06-12 23:21:14,929 - INFO -   Testing Balanced RF...
+2025-06-12 23:21:15,980 - INFO - Business logic validation for Balanced RF...
+2025-06-12 23:21:15,993 - INFO -   Balanced RF passes business logic validation
+2025-06-12 23:21:15,993 - INFO -      Approval rate: 42.9%
+2025-06-12 23:21:15,993 - INFO -     F1: 0.6450, Acc: 0.7083, CV: 0.6646
+2025-06-12 23:21:15,993 - INFO -     Approval Rate: 42.9%
+2025-06-12 23:21:15,993 - INFO -     Business Logic: PASS
+2025-06-12 23:21:15,993 - INFO -   Testing Optimal Weight RF...
+2025-06-12 23:21:17,040 - INFO - Business logic validation for Optimal Weight RF...
+2025-06-12 23:21:17,053 - INFO -   Optimal Weight RF passes business logic validation
+2025-06-12 23:21:17,054 - INFO -      Approval rate: 42.9%
+2025-06-12 23:21:17,054 - INFO -     F1: 0.6316, Acc: 0.6967, CV: 0.6728
+2025-06-12 23:21:17,054 - INFO -     Approval Rate: 42.9%
+2025-06-12 23:21:17,054 - INFO -     Business Logic: PASS
+2025-06-12 23:21:17,054 - INFO - Selected Baseline: Default RF
+2025-06-12 23:21:17,054 - INFO -   Test F1-Score: 0.6507
+2025-06-12 23:21:17,054 - INFO -   Test Accuracy: 0.7083
+2025-06-12 23:21:17,054 - INFO -   CV F1-Score: 0.6584
+2025-06-12 23:21:17,054 - INFO -   Class Weight: None
+2025-06-12 23:25:26,108 - ERROR - Error calculating baseline: API request to https://dagshub.com/agusprasetyo811/kredit_pinjaman.mlflow/api/2.0/mlflow/runs/get failed with exception HTTPSConnectionPool(host='dagshub.com', port=443): Max retries exceeded with url: /agusprasetyo811/kredit_pinjaman.mlflow/api/2.0/mlflow/runs/get?run_uuid=b94bda456e754a7ca7f1c6499f284f92&run_id=b94bda456e754a7ca7f1c6499f284f92 (Caused by ResponseError('too many 500 error responses'))
+2025-06-12 23:25:26,120 - ERROR - Failed to calculate baseline. Exiting...

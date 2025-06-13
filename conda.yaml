@@ -1,0 +1,67 @@
+name: modelling-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  
+  # Core Data Science & ML (Essential)
+  - numpy=2.2.6
+  - pandas=2.3.0
+  - scikit-learn=1.6.1
+  - scipy=1.15.3
+  - joblib=1.5.1
+  
+  # Visualization
+  - matplotlib=3.10.3
+  - seaborn=0.13.2
+  
+  # ML Libraries
+  - xgboost
+  - shap
+  
+  # Web Framework & API
+  - flask=3.1.1
+  - fastapi=0.115.12
+  - uvicorn=0.34.3
+  
+  # Database & Storage
+  - sqlalchemy=2.0.41
+  - pyarrow
+  
+  # Jupyter (for development)
+  - jupyterlab
+  - ipython
+  
+  # Essential Utilities
+  - requests
+  - python-dotenv
+  - pyyaml
+  - tqdm
+  
+  # AWS & Cloud
+  - boto3
+  
+  # Authentication
+  - google-auth
+  
+  # Pip-only packages (Essential for MLflow)
+  - pip:
+      # MLflow & Experiment Tracking
+      - mlflow==2.22.0
+      
+      # DagsHub Integration  
+      - dagshub==0.5.10
+      
+      # Hyperparameter Optimization
+      - optuna==4.3.0
+      
+      # Container Support
+      - docker==7.1.0
+      
+      # Rich Console Output
+      - rich==14.0.0
+      
+      # Protobuf (required by MLflow)
+      - protobuf==6.31.1

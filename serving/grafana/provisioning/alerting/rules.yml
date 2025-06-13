@@ -1,0 +1,239 @@
+apiVersion: 1
+
+groups:
+  - name: "api-performance-alerts"
+    orgId: 1
+    folder: "Alerts"
+    interval: 30s
+    rules:
+      - uid: "high-api-error-rate"
+        title: "High API Error Rate"
+        condition: "C"
+        data:
+          - refId: "A"
+            queryType: ""
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: "prometheus"
+            model:
+              expr: "(sum(rate(api_status_codes_total{status_code!=\"200\"}[5m])) / sum(rate(api_status_codes_total[5m]))) * 100"
+              interval: ""
+              refId: "A"
+          - refId: "B"
+            queryType: ""
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              expression: "A"
+              reducer: "last"
+              refId: "B"
+              type: "reduce"
+          - refId: "C"
+            queryType: ""
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 5
+                    type: "gt"
+              expression: "B"
+              refId: "C"
+              type: "threshold"
+        noDataState: "NoData"
+        execErrState: "Alerting"
+        for: "2m"
+        annotations:
+          summary: "API Error Rate is High"
+          description: "API error rate is {{ $values.B.Value }}% which exceeds 5% threshold"
+          runbook_url: ""
+        labels:
+          severity: "critical"
+          team: "backend"
+          service: "model-api"
+
+      - uid: "api-response-time-slow"
+        title: "API Response Time Slow"
+        condition: "C"
+        data:
+          - refId: "A"
+            queryType: ""
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: "prometheus"
+            model:
+              expr: "histogram_quantile(0.95, rate(api_response_duration_seconds_bucket[5m]))"
+              interval: ""
+              refId: "A"
+          - refId: "B"
+            queryType: ""
+            datasourceUid: "__expr__"
+            model:
+              expression: "A"
+              reducer: "last"
+              refId: "B"
+              type: "reduce"
+          - refId: "C"
+            queryType: ""
+            datasourceUid: "__expr__"
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0.5
+                    type: "gt"
+              expression: "B"
+              refId: "C"
+              type: "threshold"
+        noDataState: "NoData"
+        execErrState: "Alerting"
+        for: "3m"
+        annotations:
+          summary: "API Response Time P95 is Slow"
+          description: "API P95 response time is {{ $values.B.Value }}s which exceeds 500ms"
+        labels:
+          severity: "warning"
+          team: "backend"
+          service: "model-api"
+
+      - uid: "model-api-down"
+        title: "Model API Service Down"
+        condition: "C"
+        data:
+          - refId: "A"
+            queryType: ""
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: "prometheus"
+            model:
+              expr: "up{job=\"model-api\"}"
+              interval: ""
+              refId: "A"
+          - refId: "B"
+            queryType: ""
+            datasourceUid: "__expr__"
+            model:
+              expression: "A"
+              reducer: "last"
+              refId: "B"
+              type: "reduce"
+          - refId: "C"
+            queryType: ""
+            datasourceUid: "__expr__"
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: "lt"
+              expression: "B"
+              refId: "C"
+              type: "threshold"
+        noDataState: "Alerting"
+        execErrState: "Alerting"
+        for: "1m"
+        annotations:
+          summary: "Model API Service is Down"
+          description: "Model API service has been down for more than 1 minute"
+        labels:
+          severity: "critical"
+          team: "sre"
+          service: "model-api"
+
+      - uid: "high-risk-predictions"
+        title: "High Risk Predictions Spike"
+        condition: "C"
+        data:
+          - refId: "A"
+            queryType: ""
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: "prometheus"
+            model:
+              expr: "(high_risk_predictions_total / model_predictions_total) * 100"
+              interval: ""
+              refId: "A"
+          - refId: "B"
+            queryType: ""
+            datasourceUid: "__expr__"
+            model:
+              expression: "A"
+              reducer: "last"
+              refId: "B"
+              type: "reduce"
+          - refId: "C"
+            queryType: ""
+            datasourceUid: "__expr__"
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 50
+                    type: "gt"
+              expression: "B"
+              refId: "C"
+              type: "threshold"
+        noDataState: "NoData"
+        execErrState: "Alerting"
+        for: "10m"
+        annotations:
+          summary: "High Risk Predictions Spike"
+          description: "{{ $values.B.Value }}% of predictions are high risk (threshold: 50%)"
+        labels:
+          severity: "warning"
+          team: "ml-ops"
+          service: "model-api"
+
+      - uid: "model-confidence-low"
+        title: "Model Confidence Low"
+        condition: "C"
+        data:
+          - refId: "A"
+            queryType: ""
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: "prometheus"
+            model:
+              expr: "model_confidence_score_sum / model_confidence_score_count"
+              interval: ""
+              refId: "A"
+          - refId: "B"
+            queryType: ""
+            datasourceUid: "__expr__"
+            model:
+              expression: "A"
+              reducer: "last"
+              refId: "B"
+              type: "reduce"
+          - refId: "C"
+            queryType: ""
+            datasourceUid: "__expr__"
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0.7
+                    type: "lt"
+              expression: "B"
+              refId: "C"
+              type: "threshold"
+        noDataState: "NoData"
+        execErrState: "Alerting"
+        for: "15m"
+        annotations:
+          summary: "Model Confidence Below Threshold"
+          description: "Average model confidence is {{ $values.B.Value }} (threshold: 0.7)"
+        labels:
+          severity: "warning"
+          team: "ml-ops"
+          service: "model-api"

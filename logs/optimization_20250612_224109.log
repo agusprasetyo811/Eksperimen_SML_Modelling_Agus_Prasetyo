@@ -1,0 +1,45 @@
+2025-06-12 22:41:10,502 - INFO - Starting robust model optimization with business validation...
+2025-06-12 22:41:10,503 - INFO - Business constraints:
+2025-06-12 22:41:10,503 - INFO -   Target approval rate: 60.0%
+2025-06-12 22:41:10,503 - INFO -   Min approval rate: 30.0%
+2025-06-12 22:41:10,503 - INFO -   Max approval rate: 80.0%
+2025-06-12 22:41:10,503 - INFO - Loading and validating data...
+2025-06-12 22:41:10,515 - INFO - CLASS BALANCE ANALYSIS:
+2025-06-12 22:41:10,515 - INFO -   Training approval rate: 0.430 (1031/2400)
+2025-06-12 22:41:10,515 - INFO -   Test approval rate: 0.430 (258/600)
+2025-06-12 22:41:10,515 - INFO - OPTIMAL CLASS WEIGHTS (targeting 60.0% approval):
+2025-06-12 22:41:10,515 - INFO -   Class 0 (Reject): 1.000
+2025-06-12 22:41:10,515 - INFO -   Class 1 (Approve): 0.667
+2025-06-12 22:41:10,521 - INFO - Data loaded successfully:
+2025-06-12 22:41:10,521 - INFO -   Training: 2400 samples, 17 features
+2025-06-12 22:41:10,521 - INFO -   Testing: 600 samples
+2025-06-12 22:41:10,521 - INFO -   Optimization split: 1920 train, 480 validation
+2025-06-12 22:41:10,521 - INFO - Calculating baseline performance...
+2025-06-12 22:41:10,521 - INFO -   Testing Default RF...
+2025-06-12 22:41:11,704 - INFO - Business logic validation for Default RF...
+2025-06-12 22:41:11,723 - INFO -   Default RF passes business logic validation
+2025-06-12 22:41:11,724 - INFO -      Approval rate: 42.9%
+2025-06-12 22:41:11,724 - INFO -     F1: 0.6507, Acc: 0.7083, CV: 0.6584
+2025-06-12 22:41:11,724 - INFO -     Approval Rate: 42.9%
+2025-06-12 22:41:11,724 - INFO -     Business Logic: PASS
+2025-06-12 22:41:11,724 - INFO -   Testing Balanced RF...
+2025-06-12 22:41:12,818 - INFO - Business logic validation for Balanced RF...
+2025-06-12 22:41:12,832 - INFO -   Balanced RF passes business logic validation
+2025-06-12 22:41:12,832 - INFO -      Approval rate: 42.9%
+2025-06-12 22:41:12,832 - INFO -     F1: 0.6450, Acc: 0.7083, CV: 0.6646
+2025-06-12 22:41:12,832 - INFO -     Approval Rate: 42.9%
+2025-06-12 22:41:12,832 - INFO -     Business Logic: PASS
+2025-06-12 22:41:12,832 - INFO -   Testing Optimal Weight RF...
+2025-06-12 22:41:13,929 - INFO - Business logic validation for Optimal Weight RF...
+2025-06-12 22:41:13,947 - INFO -   Optimal Weight RF passes business logic validation
+2025-06-12 22:41:13,947 - INFO -      Approval rate: 42.9%
+2025-06-12 22:41:13,947 - INFO -     F1: 0.6316, Acc: 0.6967, CV: 0.6728
+2025-06-12 22:41:13,947 - INFO -     Approval Rate: 42.9%
+2025-06-12 22:41:13,947 - INFO -     Business Logic: PASS
+2025-06-12 22:41:13,947 - INFO - Selected Baseline: Default RF
+2025-06-12 22:41:13,947 - INFO -   Test F1-Score: 0.6507
+2025-06-12 22:41:13,947 - INFO -   Test Accuracy: 0.7083
+2025-06-12 22:41:13,947 - INFO -   CV F1-Score: 0.6584
+2025-06-12 22:41:13,947 - INFO -   Class Weight: None
+2025-06-12 22:41:13,950 - ERROR - Error calculating baseline: Cannot start run with ID d9ecaf3f4d6c4e16bec15d7d2dbbae88 because active run ID does not match environment run ID. Make sure --experiment-name or --experiment-id matches experiment set with set_experiment(), or just use command-line arguments
+2025-06-12 22:41:13,951 - ERROR - Failed to calculate baseline. Exiting...
