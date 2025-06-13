@@ -26,7 +26,6 @@ jobs:
     - name: Install additional dependencies
       shell: bash -l {0}
       run: |
-        conda install -c conda-forge dagshub
         pip install dagshub
         
     - name: Configure DagsHub
