@@ -61,7 +61,7 @@ def setup_mlflow_robust():
     
     print(f"Configuration check:")
     print(f"  DagsHub URL: {'✓' if dagshub_url else '❌'} {dagshub_url}")
-    print(f"  Username: {'✓' if dagshub_username else '❌'}")
+    print(f"  Username: {'✓' if dagshub_username else '❌'} {dagshub_username}")
     print(f"  Token: {'✓' if dagshub_token else '❌'}")
     print(f"  Experiment: {experiment_name}")
     print(f"  Model Name: {model_name}")
