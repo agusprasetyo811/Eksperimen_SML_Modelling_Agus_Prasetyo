@@ -7,13 +7,13 @@ on:
     branches: [ main ]
 
 env:
-  DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+  DAGSHUB_USERNAME: ${{ vars.DAGSHUB_USERNAME }}
   DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
-  DAGSHUB_REPO_URL: ${{ secrets.DAGSHUB_REPO_URL }}
-  MODEL_NAME: ${{ secrets.MODEL_NAME }}
+  DAGSHUB_REPO_URL: ${{ vars.DAGSHUB_REPO_URL }}
+  MODEL_NAME: ${{ vars.MODEL_NAME }}
   EXPERIMENT_NAME: credit-approval-prediction
-  MLFLOW_TRACKING_URI: ${{ secrets.DAGSHUB_REPO_URL }}.mlflow
-  MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+  MLFLOW_TRACKING_URI: ${{ vars.DAGSHUB_REPO_URL }}.mlflow
+  MLFLOW_TRACKING_USERNAME: ${{ vars.DAGSHUB_USERNAME }}
   MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
 
 jobs:
