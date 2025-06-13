@@ -2,3 +2,4 @@
 /mlruns/
 /output/
 /.ipynb_checkpoints/
+.env
