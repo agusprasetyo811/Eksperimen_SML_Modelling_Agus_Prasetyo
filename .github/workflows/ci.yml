@@ -74,5 +74,5 @@ jobs:
     - name: Check results
       shell: bash -l {0}
       run: |
-        echo "✅ MLflow experiments completed successfully!"
-        echo "🔗 Check results at: ${{ secrets.DAGSHUB_REPO_URL }}"
+        echo "MLflow experiments completed successfully!"
+        echo "Check results at: ${{ secrets.DAGSHUB_REPO_URL }}"

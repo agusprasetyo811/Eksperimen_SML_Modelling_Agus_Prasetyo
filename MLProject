@@ -1,0 +1,39 @@
+name: credit-approval-prediction
+
+conda_env: conda.yaml
+
+entry_points:
+  # Test DagsHub connection (optional)
+  test_connection:
+    command: "python test_dagshub_connection.py"
+    
+  # Basic modeling with 3 algorithms (Logistic Regression, Random Forest, Decision Tree)
+  basic_modeling:
+    parameters:
+      experiment_name: {type: str, default: "credit-approval-basic"}
+      model_name: {type: str, default: "credit_approval_model"}
+    command: "EXPERIMENT_NAME={experiment_name} MODEL_NAME={model_name} python modelling.py"
+    
+  # Advanced hyperparameter tuning with business validation
+  advanced_tuning:
+    parameters:
+      # Regularization parameters
+      alpha: {type: float, default: 0.5}
+      l1_ratio: {type: float, default: 0.1}
+      
+      # Business logic parameters
+      min_approval_rate: {type: float, default: 0.3}
+      max_approval_rate: {type: float, default: 0.8}
+      target_approval_rate: {type: float, default: 0.6}
+      
+      # Optimization parameters
+      n_iter_optuna: {type: int, default: 200}
+      grid_search_iter: {type: int, default: 200}
+      
+      # Model parameters
+      random_state: {type: int, default: 42}
+      
+      # Experiment settings
+      experiment_name: {type: str, default: "credit-approval-tuning"}
+      model_name: {type: str, default: "credit_approval_model_tuned"}
+    command: "MIN_APPROVAL_RATE={min_approval_rate} MAX_APPROVAL_RATE={max_approval_rate} TARGET_APPROVAL_RATE={target_approval_rate} N_ITER_OPTUNA={n_iter_optuna} GRID_SEARCH_ITER={grid_search_iter} RANDOM_STATE={random_state} EXPERIMENT_NAME={experiment_name} MODEL_NAME={model_name} python modelling_tuning.py --alpha {alpha} --l1_ratio {l1_ratio}"
