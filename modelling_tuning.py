@@ -5,6 +5,7 @@ import sys
 import time
 import joblib
 import warnings
+import argparse
 from datetime import datetime
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, ExtraTreesClassifier
 from sklearn.linear_model import LogisticRegression
@@ -17,50 +18,469 @@ from sklearn.preprocessing import StandardScaler
 
 warnings.filterwarnings('ignore')
 
-from dotenv import load_dotenv
-load_dotenv()
-import argparse
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--alpha", type=float, default=0.5, help="Regularization strength (alpha)")
-parser.add_argument("--l1_ratio", type=float, default=0.1, help="ElasticNet mixing parameter (l1_ratio)")
-args = parser.parse_args()
-
-alpha = args.alpha
-l1_ratio = args.l1_ratio
-
 print("="*70)
-print("COMPREHENSIVE MODEL OPTIMIZATION - ROBUST VERSION")
+print("COMPREHENSIVE MODEL OPTIMIZATION - DAGSHUB & MLFLOW INTEGRATION")
 print("="*70)
 
 # ============================================================================
-# 0. ROBUST CONFIGURATION & SETUP
+# 2.5. ADVANCED FEATURE ENGINEERING - NEW ADDITION
+# ============================================================================
+
+def create_advanced_features(X_train, X_test, config, logger):
+    """Create advanced engineered features untuk improve model performance"""
+    if not config.use_advanced_features:
+        logger.info("Advanced feature engineering disabled, using original features")
+        return X_train, X_test
+    
+    logger.info("🔬 Creating advanced engineered features...")
+    
+    try:
+        # Make copies
+        X_train_enhanced = X_train.copy()
+        X_test_enhanced = X_test.copy()
+        
+        # Feature 1: Advanced debt ratio categories
+        def categorize_debt_ratio(df):
+            if 'rasio_pinjaman_pendapatan' in df.columns:
+                df['debt_ratio_low'] = (df['rasio_pinjaman_pendapatan'] <= 3).astype(int)
+                df['debt_ratio_medium'] = ((df['rasio_pinjaman_pendapatan'] > 3) & 
+                                         (df['rasio_pinjaman_pendapatan'] <= 5)).astype(int)
+                df['debt_ratio_high'] = ((df['rasio_pinjaman_pendapatan'] > 5) & 
+                                       (df['rasio_pinjaman_pendapatan'] <= 7)).astype(int)
+                df['debt_ratio_extreme'] = (df['rasio_pinjaman_pendapatan'] > 7).astype(int)
+            return df
+        
+        # Feature 2: Enhanced credit score ranges
+        def create_enhanced_credit_ranges(df):
+            if 'skor_kredit' in df.columns:
+                df['credit_excellent_plus'] = (df['skor_kredit'] >= 800).astype(int)
+                df['credit_very_good'] = ((df['skor_kredit'] >= 750) & (df['skor_kredit'] < 800)).astype(int)
+                df['credit_good_plus'] = ((df['skor_kredit'] >= 700) & (df['skor_kredit'] < 750)).astype(int)
+                df['credit_borderline'] = ((df['skor_kredit'] >= 600) & (df['skor_kredit'] < 650)).astype(int)
+                df['credit_high_risk'] = (df['skor_kredit'] < 550).astype(int)
+            return df
+        
+        # Feature 3: Income stability composite score
+        def create_income_stability_score(df):
+            stability_score = 0
+            
+            # Job stability component (0-3 points)
+            if 'pekerjaan_Tetap' in df.columns:
+                stability_score += df['pekerjaan_Tetap'] * 3  # Highest stability
+            if 'pekerjaan_Kontrak' in df.columns:
+                stability_score += df['pekerjaan_Kontrak'] * 2  # Medium stability
+            if 'pekerjaan_Freelance' in df.columns:
+                stability_score += df['pekerjaan_Freelance'] * 1  # Lowest stability
+            
+            # Income level component (0-2 points)
+            if 'kategori_pendapatan_Tinggi' in df.columns:
+                stability_score += df['kategori_pendapatan_Tinggi'] * 2
+            if 'kategori_pendapatan_Sedang' in df.columns:
+                stability_score += df['kategori_pendapatan_Sedang'] * 1
+            
+            df['income_stability_score'] = stability_score
+            return df
+        
+        # Feature 4: Risk combination indicators
+        def create_risk_combinations(df):
+            # High-risk combination: Young + Freelance + Poor Credit
+            if all(col in df.columns for col in ['kategori_umur_Muda', 'pekerjaan_Freelance', 'kategori_skor_kredit_Poor']):
+                df['high_risk_combination'] = (
+                    df['kategori_umur_Muda'] & 
+                    df['pekerjaan_Freelance'] & 
+                    df['kategori_skor_kredit_Poor']
+                ).astype(int)
+            
+            # Low-risk combination: Adult + Permanent + Good Credit
+            if all(col in df.columns for col in ['kategori_umur_Dewasa', 'pekerjaan_Tetap', 'kategori_skor_kredit_Good']):
+                df['low_risk_combination'] = (
+                    df['kategori_umur_Dewasa'] & 
+                    df['pekerjaan_Tetap'] & 
+                    df['kategori_skor_kredit_Good']
+                ).astype(int)
+            
+            # Senior stability combination
+            if all(col in df.columns for col in ['kategori_umur_Senior', 'pekerjaan_Tetap']):
+                df['senior_stable_combination'] = (
+                    df['kategori_umur_Senior'] & 
+                    df['pekerjaan_Tetap']
+                ).astype(int)
+            
+            return df
+        
+        # Feature 5: Age-Income interaction effects
+        def create_age_income_interactions(df):
+            if all(col in df.columns for col in ['umur', 'pendapatan']):
+                # Peak earning years indicator (35-50)
+                df['peak_earning_years'] = ((df['umur'] >= 35) & (df['umur'] <= 50)).astype(int)
+                
+                # Young high earner (potential future growth)
+                if 'kategori_pendapatan_Tinggi' in df.columns:
+                    df['young_high_earner'] = (
+                        (df['umur'] < 35) & df['kategori_pendapatan_Tinggi']
+                    ).astype(int)
+                
+                # Experience factor (age * income level indicator)
+                age_norm = (df['umur'] - 18) / (65 - 18)  # Normalize age to 0-1
+                income_millions = df['pendapatan'] / 1000000
+                df['experience_income_factor'] = age_norm * np.log1p(income_millions)
+            
+            return df
+        
+        # Feature 6: Loan efficiency and capacity features
+        def create_loan_efficiency_features(df):
+            if all(col in df.columns for col in ['jumlah_pinjaman', 'pendapatan', 'umur']):
+                # Working years left (assume retirement at 65)
+                working_years_left = np.maximum(65 - df['umur'], 5)
+                
+                # Monthly debt service capacity (assume 30% of income)
+                monthly_capacity = df['pendapatan'] * 0.3
+                
+                # Total repayment capacity over working life
+                total_capacity = monthly_capacity * working_years_left * 12
+                
+                # Loan to total capacity ratio
+                df['loan_to_total_capacity'] = (df['jumlah_pinjaman'] / total_capacity).clip(0, 5)
+                
+                # Loan burden relative to age
+                df['age_adjusted_loan_burden'] = df['rasio_pinjaman_pendapatan'] * (70 - df['umur']) / 40
+                
+                # Debt service ratio (monthly)
+                df['monthly_debt_service_ratio'] = (df['jumlah_pinjaman'] / 240) / df['pendapatan']  # Assume 20 year loan
+            
+            return df
+        
+        # Apply all feature engineering steps
+        logger.info("  Creating debt ratio categories...")
+        X_train_enhanced = categorize_debt_ratio(X_train_enhanced)
+        X_test_enhanced = categorize_debt_ratio(X_test_enhanced)
+        
+        logger.info("  Creating enhanced credit score ranges...")
+        X_train_enhanced = create_enhanced_credit_ranges(X_train_enhanced)
+        X_test_enhanced = create_enhanced_credit_ranges(X_test_enhanced)
+        
+        logger.info("  Creating income stability scores...")
+        X_train_enhanced = create_income_stability_score(X_train_enhanced)
+        X_test_enhanced = create_income_stability_score(X_test_enhanced)
+        
+        logger.info("  Creating risk combination features...")
+        X_train_enhanced = create_risk_combinations(X_train_enhanced)
+        X_test_enhanced = create_risk_combinations(X_test_enhanced)
+        
+        logger.info("  Creating age-income interactions...")
+        X_train_enhanced = create_age_income_interactions(X_train_enhanced)
+        X_test_enhanced = create_age_income_interactions(X_test_enhanced)
+        
+        logger.info("  Creating loan efficiency features...")
+        X_train_enhanced = create_loan_efficiency_features(X_train_enhanced)
+        X_test_enhanced = create_loan_efficiency_features(X_test_enhanced)
+        
+        # Handle any NaN values created during feature engineering
+        X_train_enhanced = X_train_enhanced.fillna(0)
+        X_test_enhanced = X_test_enhanced.fillna(0)
+        
+        new_features_count = X_train_enhanced.shape[1] - X_train.shape[1]
+        logger.info(f"Advanced feature engineering completed:")
+        logger.info(f"   Original features: {X_train.shape[1]}")
+        logger.info(f"   New features created: {new_features_count}")
+        logger.info(f"   Total features: {X_train_enhanced.shape[1]}")
+        
+        return X_train_enhanced, X_test_enhanced
+        
+    except Exception as e:
+        logger.error(f"Advanced feature engineering failed: {e}")
+        logger.warning("Falling back to original features...")
+        return X_train, X_test
+
+def perform_intelligent_feature_selection(X_train, X_test, y_train, config, logger):
+    """Perform intelligent feature selection using multiple methods"""
+    if not config.use_feature_selection:
+        logger.info("Feature selection disabled, using all features")
+        return X_train, X_test, X_train.columns.tolist()
+    
+    logger.info("🎯 Performing intelligent feature selection...")
+    
+    try:
+        from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif
+        
+        # Method 1: Statistical feature selection (f_classif)
+        selector_stats = SelectKBest(score_func=f_classif, k=min(config.feature_selection_k, X_train.shape[1]))
+        selector_stats.fit(X_train, y_train)
+        selected_features_stats = X_train.columns[selector_stats.get_support()].tolist()
+        
+        # Method 2: Mutual information feature selection
+        selector_mi = SelectKBest(score_func=mutual_info_classif, k=min(config.feature_selection_k, X_train.shape[1]))
+        selector_mi.fit(X_train, y_train)
+        selected_features_mi = X_train.columns[selector_mi.get_support()].tolist()
+        
+        # Method 3: Random Forest feature importance
+        rf_selector = RandomForestClassifier(n_estimators=100, random_state=config.random_state)
+        rf_selector.fit(X_train, y_train)
+        
+        feature_importance = pd.DataFrame({
+            'feature': X_train.columns,
+            'importance': rf_selector.feature_importances_
+        }).sort_values('importance', ascending=False)
+        
+        top_features_rf = feature_importance.head(config.feature_selection_k)['feature'].tolist()
+        
+        # Ensemble feature selection: Take union but prioritize features that appear in multiple methods
+        feature_votes = {}
+        for feature in X_train.columns:
+            votes = 0
+            if feature in selected_features_stats:
+                votes += 1
+            if feature in selected_features_mi:
+                votes += 1
+            if feature in top_features_rf:
+                votes += 2  # RF gets double weight
+            feature_votes[feature] = votes
+        
+        # Sort by votes and importance, take top K
+        sorted_features = sorted(feature_votes.items(), key=lambda x: (x[1], feature_importance[feature_importance['feature'] == x[0]]['importance'].iloc[0] if len(feature_importance[feature_importance['feature'] == x[0]]) > 0 else 0), reverse=True)
+        
+        final_features = [f[0] for f in sorted_features[:config.feature_selection_k]]
+        
+        X_train_selected = X_train[final_features]
+        X_test_selected = X_test[final_features]
+        
+        logger.info(f"Intelligent feature selection completed:")
+        logger.info(f"   Original features: {X_train.shape[1]}")
+        logger.info(f"   Selected features: {len(final_features)}")
+        logger.info(f"   Feature reduction: {(1 - len(final_features)/X_train.shape[1])*100:.1f}%")
+        
+        # Log top selected features
+        logger.info(f"   Top 10 selected features:")
+        for i, feature in enumerate(final_features[:10]):
+            importance = feature_importance[feature_importance['feature'] == feature]['importance'].iloc[0] if len(feature_importance[feature_importance['feature'] == feature]) > 0 else 0
+            votes = feature_votes[feature]
+            logger.info(f"     {i+1}. {feature}: importance={importance:.4f}, votes={votes}")
+        
+        return X_train_selected, X_test_selected, final_features
+        
+    except Exception as e:
+        logger.error(f"Feature selection failed: {e}")
+        logger.warning("Using all features...")
+        return X_train, X_test, X_train.columns.tolist()
+
+# ============================================================================
+# 2.6. ADVANCED ENSEMBLE METHODS - NEW ADDITION
+# ============================================================================
+
+def create_advanced_ensemble_models(X_train, y_train, X_val, y_val, config, logger, mlflow=None):
+    """Create advanced ensemble models for improved performance"""
+    if not config.use_ensemble_methods:
+        logger.info("Ensemble methods disabled")
+        return {}
+    
+    logger.info("🎭 Creating advanced ensemble models...")
+    
+    ensemble_results = {}
+    
+    try:
+        # Ensemble 1: Diverse Random Forest Ensemble
+        logger.info("  Creating diverse Random Forest ensemble...")
+        
+        rf_configs = [
+            {'n_estimators': 200, 'max_depth': 15, 'min_samples_split': 5, 'class_weight': 'balanced', 'max_features': 'sqrt'},
+            {'n_estimators': 300, 'max_depth': 20, 'min_samples_split': 10, 'class_weight': None, 'max_features': 'log2'},
+            {'n_estimators': 150, 'max_depth': 12, 'min_samples_split': 8, 'class_weight': 'balanced_subsample', 'bootstrap': False},
+            {'n_estimators': 250, 'max_depth': 18, 'min_samples_split': 6, 'criterion': 'entropy'},
+            {'n_estimators': 180, 'max_depth': 25, 'min_samples_split': 4, 'max_features': 0.6}
+        ]
+        
+        rf_models = []
+        for i, rf_config in enumerate(rf_configs[:config.ensemble_models]):
+            rf = RandomForestClassifier(random_state=config.random_state + i, **rf_config)
+            rf.fit(X_train, y_train)
+            rf_models.append((f'rf_{i}', rf))
+        
+        # Create voting ensemble
+        from sklearn.ensemble import VotingClassifier
+        voting_ensemble = VotingClassifier(estimators=rf_models, voting='soft')
+        voting_ensemble.fit(X_train, y_train)
+        
+        # Evaluate ensemble
+        y_val_pred = voting_ensemble.predict(X_val)
+        val_f1 = f1_score(y_val, y_val_pred)
+        val_acc = accuracy_score(y_val, y_val_pred)
+        val_approval_rate = np.mean(y_val_pred)
+        
+        # Business validation
+        business_validation = validate_model_business_logic(
+            voting_ensemble, X_val, y_val, config, logger, "RF_Voting_Ensemble"
+        )
+        
+        if business_validation['passes_business_logic']:
+            ensemble_results['rf_voting_ensemble'] = {
+                'model': voting_ensemble,
+                'val_f1': val_f1,
+                'val_acc': val_acc,
+                'optimization_time': 0,  # Ensemble creation time
+                'business_validation': business_validation,
+                'params': {'ensemble_type': 'rf_voting', 'n_models': len(rf_models)}
+            }
+            logger.info(f"    RF Voting Ensemble: F1={val_f1:.4f}, Approval={val_approval_rate:.1%}")
+        else:
+            logger.warning(f"    RF Voting Ensemble failed business validation")
+        
+        # Ensemble 2: Multi-Algorithm Ensemble (if enabled)
+        logger.info("  Creating multi-algorithm ensemble...")
+        
+        # Create pipeline for logistic regression (needs scaling)
+        from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import StandardScaler
+        
+        base_models = [
+            ('rf', RandomForestClassifier(n_estimators=200, max_depth=15, random_state=config.random_state, class_weight='balanced')),
+            ('gb', GradientBoostingClassifier(n_estimators=150, learning_rate=0.1, max_depth=5, random_state=config.random_state)),
+            ('et', ExtraTreesClassifier(n_estimators=200, max_depth=20, random_state=config.random_state, class_weight='balanced')),
+            ('lr_pipeline', Pipeline([
+                ('scaler', StandardScaler()),
+                ('lr', LogisticRegression(random_state=config.random_state, max_iter=1000, class_weight='balanced'))
+            ]))
+        ]
+        
+        multi_algo_ensemble = VotingClassifier(estimators=base_models, voting='soft')
+        multi_algo_ensemble.fit(X_train, y_train)
+        
+        # Evaluate
+        y_val_pred = multi_algo_ensemble.predict(X_val)
+        val_f1 = f1_score(y_val, y_val_pred)
+        val_acc = accuracy_score(y_val, y_val_pred)
+        val_approval_rate = np.mean(y_val_pred)
+        
+        business_validation = validate_model_business_logic(
+            multi_algo_ensemble, X_val, y_val, config, logger, "Multi_Algorithm_Ensemble"
+        )
+        
+        if business_validation['passes_business_logic']:
+            ensemble_results['multi_algorithm_ensemble'] = {
+                'model': multi_algo_ensemble,
+                'val_f1': val_f1,
+                'val_acc': val_acc,
+                'optimization_time': 0,
+                'business_validation': business_validation,
+                'params': {'ensemble_type': 'multi_algorithm', 'algorithms': ['RF', 'GB', 'ET', 'LR']}
+            }
+            logger.info(f"    Multi-Algorithm Ensemble: F1={val_f1:.4f}, Approval={val_approval_rate:.1%}")
+        else:
+            logger.warning(f"    Multi-Algorithm Ensemble failed business validation")
+        
+        # Ensemble 3: Stacked Ensemble (if enabled)
+        if config.use_stacking:
+            logger.info("  Creating stacked ensemble...")
+            
+            from sklearn.ensemble import StackingClassifier
+            
+            # Level 1 models (base learners)
+            level1_models = [
+                ('rf1', RandomForestClassifier(n_estimators=150, max_depth=15, random_state=config.random_state)),
+                ('rf2', RandomForestClassifier(n_estimators=200, max_depth=20, random_state=config.random_state+1, class_weight='balanced')),
+                ('gb', GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, random_state=config.random_state)),
+                ('et', ExtraTreesClassifier(n_estimators=150, max_depth=18, random_state=config.random_state))
+            ]
+            
+            # Level 2 model (meta-learner)
+            meta_learner = LogisticRegression(random_state=config.random_state, max_iter=1000, class_weight='balanced')
+            
+            # Create stacking classifier
+            stacking_ensemble = StackingClassifier(
+                estimators=level1_models,
+                final_estimator=meta_learner,
+                cv=3,  # Use 3-fold CV for meta-features
+                stack_method='predict_proba'
+            )
+            
+            stacking_ensemble.fit(X_train, y_train)
+            
+            # Evaluate
+            y_val_pred = stacking_ensemble.predict(X_val)
+            val_f1 = f1_score(y_val, y_val_pred)
+            val_acc = accuracy_score(y_val, y_val_pred)
+            val_approval_rate = np.mean(y_val_pred)
+            
+            business_validation = validate_model_business_logic(
+                stacking_ensemble, X_val, y_val, config, logger, "Stacking_Ensemble"
+            )
+            
+            if business_validation['passes_business_logic']:
+                ensemble_results['stacking_ensemble'] = {
+                    'model': stacking_ensemble,
+                    'val_f1': val_f1,
+                    'val_acc': val_acc,
+                    'optimization_time': 0,
+                    'business_validation': business_validation,
+                    'params': {'ensemble_type': 'stacking', 'meta_learner': 'LogisticRegression'}
+                }
+                logger.info(f"    Stacking Ensemble: F1={val_f1:.4f}, Approval={val_approval_rate:.1%}")
+            else:
+                logger.warning(f"    Stacking Ensemble failed business validation")
+        
+        # Log to MLflow if available
+        if mlflow and ensemble_results:
+            for ensemble_name, result in ensemble_results.items():
+                with mlflow.start_run(run_name=f"Ensemble_{ensemble_name}_{datetime.now().strftime('%H%M%S')}", nested=True):
+                    mlflow.log_param("ensemble_type", ensemble_name)
+                    mlflow.log_params(result['params'])
+                    mlflow.log_metric("validation_f1", result['val_f1'])
+                    mlflow.log_metric("validation_accuracy", result['val_acc'])
+                    mlflow.log_metric("approval_rate", result['business_validation']['approval_rate'])
+                    mlflow.log_metric("passes_business_logic", result['business_validation']['passes_business_logic'])
+                    
+                    # Create model signature
+                    try:
+                        import mlflow.models
+                        signature = mlflow.models.infer_signature(X_train, y_train)
+                        mlflow.sklearn.log_model(result['model'], f"ensemble_{ensemble_name}", signature=signature)
+                        logger.info(f"    Logged {ensemble_name} with signature to MLflow")
+                    except Exception as e:
+                        logger.warning(f"    Failed to log {ensemble_name} with signature: {e}")
+                        mlflow.sklearn.log_model(result['model'], f"ensemble_{ensemble_name}")
+        
+        logger.info(f"Advanced ensemble creation completed: {len(ensemble_results)} valid ensembles")
+        return ensemble_results
+        
+    except Exception as e:
+        logger.error(f"Advanced ensemble creation failed: {e}")
+        return {}
+
+# ============================================================================
+# 0. CONFIGURATION & SETUP
 # ============================================================================
 
 class Config:
     """Configuration class untuk centralized settings"""
-    def __init__(self):
+    def __init__(self, args=None):
+        # Parse command line arguments if provided
+        if args:
+            self.alpha = args.alpha
+            self.l1_ratio = args.l1_ratio
+        else:
+            self.alpha = 0.5
+            self.l1_ratio = 0.1
+        
         # Directories
-        self.output_dir = "output"
+        self.output_dir = "MLProject/output/models"
         self.data_dir = "final_dataset"
         
-        # Model settings
-        self.random_state = int(os.getenv('RANDOM_STATE', 42))
+        # Model settings - FROM ENVIRONMENT OR DEFAULTS
+        self.random_state = int(os.getenv('RANDOM_STATE', '42'))
         self.test_size = 0.2
         self.cv_folds = 5
         
-        # Enhanced optimization settings - dapat dioverride dari MLflow parameters
+        # Enhanced optimization settings - FROM ENVIRONMENT OR DEFAULTS
         self.n_iter_random = 100        
-        self.n_iter_optuna = int(os.getenv('N_ITER_OPTUNA', 200))        
-        self.grid_search_iter = int(os.getenv('GRID_SEARCH_ITER', 200))     
+        self.n_iter_optuna = int(os.getenv('N_ITER_OPTUNA', '200'))
+        self.grid_search_iter = int(os.getenv('GRID_SEARCH_ITER', '200'))
         
         # Target improvement
         self.target_improvement = 0.025
         
-        # ROBUST SETTINGS - dapat dioverride dari MLflow parameters
-        self.min_approval_rate = float(os.getenv('MIN_APPROVAL_RATE', 0.3))
-        self.max_approval_rate = float(os.getenv('MAX_APPROVAL_RATE', 0.8))
-        self.target_approval_rate = float(os.getenv('TARGET_APPROVAL_RATE', 0.6))
+        # BUSINESS LOGIC SETTINGS - FROM ENVIRONMENT OR DEFAULTS
+        self.min_approval_rate = float(os.getenv('MIN_APPROVAL_RATE', '0.3'))
+        self.max_approval_rate = float(os.getenv('MAX_APPROVAL_RATE', '0.8'))
+        self.target_approval_rate = float(os.getenv('TARGET_APPROVAL_RATE', '0.6'))
         
         # ADVANCED OPTIMIZATION SETTINGS - NEW
         self.use_advanced_features = True      # Enable advanced feature engineering
@@ -70,22 +490,14 @@ class Config:
         self.feature_selection_k = 20          # Number of features to select
         self.ensemble_models = 5               # Number of models in ensemble
         
-        # MLflow settings - dapat dioverride dari MLflow parameters  
-        self.experiment_name = os.getenv('EXPERIMENT_NAME', 'credit-approval-prediction')
-        self.model_name = os.getenv('MODEL_NAME', 'credit_approval_model')
+        # MLflow settings - FROM ENVIRONMENT OR DEFAULTS
+        self.experiment_name = os.getenv('EXPERIMENT_NAME', 'credit-approval-tuning')
+        self.model_name = os.getenv('MODEL_NAME', 'credit_approval_model_tuned')
         
-        # DagsHub settings (corrected)
-        self.dagshub_url = os.getenv('DAGSHUB_REPO_URL')
-        self.dagshub_username = os.getenv('DAGSHUB_USERNAME')
+        # DagsHub settings - FROM ENVIRONMENT
+        self.dagshub_url = os.getenv('DAGSHUB_REPO_URL', 'https://dagshub.com/agusprasetyo811/kredit_pinjaman_2')
+        self.dagshub_username = os.getenv('DAGSHUB_USERNAME', 'agusprasetyo811')
         self.dagshub_token = os.getenv('DAGSHUB_TOKEN')
-        
-        print(f"Configuration loaded:")
-        print(f"  DagsHub URL: {self.dagshub_url}")
-        print(f"  Username: {'✓' if self.dagshub_username else '❌'}")
-        print(f"  Token: {'✓' if self.dagshub_token else '❌'}")
-        print(f"  Target Approval Rate: {self.target_approval_rate:.1%}")
-        print(f"  Optuna Iterations: {self.n_iter_optuna}")
-        print(f"  Random State: {self.random_state}")
         
         # Ensure directories exist
         self._create_directories()
@@ -94,10 +506,15 @@ class Config:
         """Create necessary directories"""
         os.makedirs(self.output_dir, exist_ok=True)
         os.makedirs("logs", exist_ok=True)
+        os.makedirs("MLProject", exist_ok=True)
+        os.makedirs("MLProject/output", exist_ok=True)
 
 def setup_logging():
     """Setup logging untuk debugging"""
     import logging
+    
+    # Create logs directory if not exists
+    os.makedirs("logs", exist_ok=True)
     
     logging.basicConfig(
         level=logging.INFO,
@@ -109,182 +526,96 @@ def setup_logging():
     )
     return logging.getLogger(__name__)
 
-def setup_mlflow_with_robust_fallback(config):
-    """Setup MLflow dengan super robust fallback untuk DagsHub issues"""
+def setup_mlflow_dagshub(config, logger):
+    """Enhanced MLflow setup dengan DagsHub integration"""
     try:
         import mlflow
         import mlflow.sklearn
-        print("✓ MLflow imported successfully")
-    except ImportError:
-        print("MLflow not installed. Install with: pip install mlflow")
-        return None, False, "none"
-    
-    # Strategy 1: Try DagsHub if credentials available
-    if config.dagshub_url and config.dagshub_username and config.dagshub_token:
-        print("Attempting DagsHub connection...")
+        import mlflow.models
         
+        logger.info("🔗 Setting up MLflow with DagsHub integration...")
+        
+        # Validate credentials
+        if not config.dagshub_token:
+            logger.error("DAGSHUB_TOKEN not found in environment variables!")
+            logger.error("Please set DAGSHUB_TOKEN before running the script")
+            return None, False
+        
+        if not config.dagshub_username:
+            logger.error("DAGSHUB_USERNAME not found in environment variables!")
+            return None, False
+        
+        if not config.dagshub_url:
+            logger.error("DAGSHUB_REPO_URL not found in environment variables!")
+            return None, False
+        
+        # Setup DagsHub MLflow tracking
         try:
-            # Import and initialize DagsHub (corrected repo name)
-            # try:
-            #     import dagshub
-            #     # Use the correct repo name from URL
-            #     dagshub.init(
-            #         repo_owner='agusprasetyo811',
-            #         repo_name='kredit_pinjaman_1',  # Corrected from 'kredit_pinjaman'
-            #         mlflow=True
-            #     )
-            #     print("✓ DagsHub initialized with correct repo name")
-            # except Exception as e:
-            #     print(f"DagsHub init warning: {e}")
-            #     print("   Continuing with manual setup...")
+            # Set tracking URI to DagsHub MLflow
+            dagshub_mlflow_uri = f"{config.dagshub_url}.mlflow"
+            mlflow.set_tracking_uri(dagshub_mlflow_uri)
             
-            # Setup environment variables
+            # Set authentication
             os.environ['MLFLOW_TRACKING_USERNAME'] = config.dagshub_username
             os.environ['MLFLOW_TRACKING_PASSWORD'] = config.dagshub_token
             
-            # Configure tracking URI (ensure .mlflow suffix)  
-            dagshub_tracking_uri = config.dagshub_url
-            if not dagshub_tracking_uri.endswith('.mlflow'):
-                dagshub_tracking_uri += '.mlflow'
+            logger.info(f"✓ DagsHub MLflow tracking configured:")
+            logger.info(f"   Repository: {config.dagshub_url}")
+            logger.info(f"   Tracking URI: {dagshub_mlflow_uri}")
+            logger.info(f"   Username: {config.dagshub_username}")
+            logger.info(f"   Token: {'*' * len(config.dagshub_token[:4])}...{config.dagshub_token[-4:]}")
             
-            print(f"Setting tracking URI: {dagshub_tracking_uri}")
-            mlflow.set_tracking_uri(dagshub_tracking_uri)
-            
-            # Test connection with improved timeout and error handling
-            def test_dagshub_connection_robust():
-                """Robust connection test with multiple fallback strategies"""
-                try:
-                    # Set short timeout for connection test
-                    import socket
-                    original_timeout = socket.getdefaulttimeout()
-                    socket.setdefaulttimeout(15)  # 15 second timeout
-                    
-                    # Test 1: Check if we can reach the tracking URI
-                    current_uri = mlflow.get_tracking_uri()
-                    print(f"   Testing connection to: {current_uri}")
-                    
-                    # Test 2: Try to get or create experiment with timeout
-                    experiment_name = config.experiment_name
-                    
-                    # Use shorter operation timeouts
-                    import signal
-                    def timeout_handler(signum, frame):
-                        raise TimeoutError("Operation timed out")
-                    
-                    signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.alarm(10)  # 10 second timeout for each operation
-                    
-                    try:
-                        # Try to get existing experiment
-                        exp = mlflow.get_experiment_by_name(experiment_name)
-                        if exp and exp.lifecycle_stage != 'deleted':
-                            mlflow.set_experiment(experiment_name)
-                            print(f"✓ Using existing experiment: {experiment_name}")
-                        else:
-                            # Try to create new experiment
-                            exp_id = mlflow.create_experiment(experiment_name)
-                            print(f"✓ Created new experiment: {experiment_name}")
-                        
-                        signal.alarm(0)  # Cancel timeout
-                        
-                        # Test 3: Try a simple run to verify full functionality
-                        signal.alarm(15)  # 15 seconds for run test
-                        
-                        with mlflow.start_run(run_name="dagshub_connection_test"):
-                            mlflow.log_param("connection_test", "success")
-                            mlflow.log_metric("test_metric", 1.0)
-                            run_id = mlflow.active_run().info.run_id
-                            print(f"✓ Test run successful: {run_id[:8]}...")
-                        
-                        signal.alarm(0)  # Cancel timeout
-                        socket.setdefaulttimeout(original_timeout)  # Restore timeout
-                        
-                        return True
-                        
-                    except TimeoutError:
-                        signal.alarm(0)
-                        print("   Connection test timed out")
-                        return False
-                    except Exception as e:
-                        signal.alarm(0)
-                        print(f"   Experiment operation failed: {e}")
-                        return False
-                        
-                except Exception as e:
-                    socket.setdefaulttimeout(original_timeout)  # Restore timeout
-                    print(f"   Connection test failed: {e}")
-                    return False
-            
-            # Perform connection test
-            if test_dagshub_connection_robust():
-                print("DagsHub MLflow connection successful!")
-                return mlflow, True, "dagshub"
-            else:
-                raise Exception("DagsHub connection test failed")
-                
         except Exception as e:
-            print(f"DagsHub setup failed: {e}")
-            print("Falling back to local MLflow...")
-    
-    # Strategy 2: Fallback to local MLflow with enhanced setup
-    try:
-        print("Setting up local MLflow with enhanced configuration...")
+            logger.error(f"DagsHub setup failed: {e}")
+            logger.warning("Falling back to local MLflow tracking...")
+            mlflow.set_tracking_uri("file:./mlruns")
         
-        # Create local MLflow directory with better structure
-        local_mlruns_dir = os.path.abspath("./mlruns")
-        os.makedirs(local_mlruns_dir, exist_ok=True)
-        
-        # Use file:// URI format
-        local_uri = f"file://{local_mlruns_dir}"
-        mlflow.set_tracking_uri(local_uri)
-        
-        # Setup experiment
-        experiment_name = config.experiment_name
+        # Set or create experiment
         try:
-            exp = mlflow.get_experiment_by_name(experiment_name)
-            if exp and exp.lifecycle_stage != 'deleted':
-                mlflow.set_experiment(experiment_name)
-                print(f"✓ Using existing local experiment: {experiment_name}")
+            experiment = mlflow.get_experiment_by_name(config.experiment_name)
+            if experiment is None:
+                experiment_id = mlflow.create_experiment(config.experiment_name)
+                logger.info(f"✓ Created new MLflow experiment: {config.experiment_name} (ID: {experiment_id})")
             else:
-                exp_id = mlflow.create_experiment(experiment_name)
-                print(f"✓ Created new local experiment: {experiment_name}")
+                logger.info(f"✓ Using existing MLflow experiment: {config.experiment_name} (ID: {experiment.experiment_id})")
+            
+            mlflow.set_experiment(config.experiment_name)
+            
         except Exception as e:
-            print(f"   Experiment setup warning: {e}")
-            # Fallback to default experiment
-            mlflow.set_experiment("Default")
-            print("✓ Using default experiment")
+            logger.error(f"Failed to set/create experiment: {e}")
+            logger.warning("Using default experiment")
         
-        # Test local setup
+        # Test connection
         try:
-            with mlflow.start_run(run_name="local_setup_test"):
-                mlflow.log_param("setup_test", "local_success")
-                mlflow.log_metric("test_value", 1.0)
-            print("✓ Local MLflow test successful")
+            # Try to start and end a test run
+            with mlflow.start_run(run_name="connection_test"):
+                mlflow.log_param("test", "connection")
+                mlflow.log_metric("test_metric", 1.0)
+                logger.info("✓ MLflow connection test successful")
+            
         except Exception as e:
-            print(f"   Local test warning: {e}")
+            logger.error(f"MLflow connection test failed: {e}")
+            logger.warning("MLflow may not be properly configured")
         
-        print(f"Local MLflow setup successful!")
-        print(f"   Tracking URI: {local_uri}")
-        print(f"   MLruns directory: {local_mlruns_dir}")
-        print(f"   Web UI: run 'mlflow ui' in terminal to view results")
+        return mlflow, True
         
-        return mlflow, True, "local"
-        
+    except ImportError:
+        logger.error("MLflow not installed. Install with: pip install mlflow")
+        return None, False
     except Exception as e:
-        print(f"Local MLflow setup failed: {e}")
-        print("Continuing without MLflow tracking...")
-        return None, False, "none"
+        logger.error(f"MLflow setup failed: {e}")
+        return None, False
 
-def setup_optuna_optional():
+def setup_optuna_optional(logger):
     """Setup Optuna dengan optional import"""
     try:
         import optuna
         optuna.logging.set_verbosity(optuna.logging.WARNING)
-        print("✓ Optuna available for Bayesian optimization")
+        logger.info("✓ Optuna available for Bayesian optimization")
         return optuna, True
     except ImportError:
-        print("Optuna not installed. Bayesian optimization will be skipped.")
-        print("   Install with: pip install optuna")
+        logger.warning("Optuna not installed. Bayesian optimization will be skipped.")
+        logger.info("   Install with: pip install optuna")
         return None, False
 
 # ============================================================================
@@ -569,18 +900,24 @@ def get_baseline_performance(data, config, logger, mlflow=None):
         logger.info(f"  CV F1-Score: {best_baseline['cv_f1']:.4f}")
         logger.info(f"  Class Weight: {best_baseline['class_weight']}")
         
-        # Safe MLflow logging
+        # Log to MLflow if available
         if mlflow:
-            try:
-                with mlflow.start_run(run_name="Baseline_Performance", nested=True):
-                    mlflow.log_param("model_type", best_baseline['name'])
-                    mlflow.log_param("class_weight", str(best_baseline['class_weight']))
-                    mlflow.log_metric("baseline_test_f1", best_baseline['f1'])
-                    mlflow.log_metric("baseline_test_accuracy", best_baseline['accuracy'])
-                    mlflow.log_metric("baseline_cv_f1", best_baseline['cv_f1'])
-                    mlflow.log_metric("baseline_approval_rate", best_baseline['business_validation']['approval_rate'])
-            except Exception as e:
-                logger.warning(f"MLflow baseline logging failed: {e}")
+            with mlflow.start_run(run_name="Baseline_Performance", nested=True):
+                mlflow.log_param("model_type", best_baseline['name'])
+                mlflow.log_param("class_weight", str(best_baseline['class_weight']))
+                mlflow.log_metric("baseline_test_f1", best_baseline['f1'])
+                mlflow.log_metric("baseline_test_accuracy", best_baseline['accuracy'])
+                mlflow.log_metric("baseline_cv_f1", best_baseline['cv_f1'])
+                mlflow.log_metric("baseline_approval_rate", best_baseline['business_validation']['approval_rate'])
+                
+                # Log model with signature
+                try:
+                    signature = mlflow.models.infer_signature(data['X_train'], data['y_train'])
+                    mlflow.sklearn.log_model(best_baseline['model'], "baseline_model", signature=signature)
+                    logger.info("    Baseline model logged with signature")
+                except Exception as e:
+                    logger.warning(f"    Failed to log baseline with signature: {e}")
+                    mlflow.sklearn.log_model(best_baseline['model'], "baseline_model")
         
         return best_baseline
         
@@ -674,22 +1011,26 @@ def optimize_random_forest(data, config, logger, mlflow=None, optuna=None):
         else:
             logger.warning(f"    Model failed business validation, skipping...")
         
-        # Safe MLflow logging
+        # Log to MLflow
         if mlflow:
-            try:
-                with mlflow.start_run(run_name=f"RF_RandomizedSearch_{datetime.now().strftime('%H%M%S')}", nested=True):
-                    mlflow.log_param("optimization_strategy", "conservative_randomized_search")
-                    mlflow.log_params(rf_search.best_params_)
-                    mlflow.log_metric("best_cv_f1", rf_search.best_score_)
-                    mlflow.log_metric("validation_f1", val_f1)
-                    mlflow.log_metric("validation_accuracy", val_acc)
-                    mlflow.log_metric("approval_rate", business_validation['approval_rate'])
-                    mlflow.log_metric("passes_business_logic", business_validation['passes_business_logic'])
-                    mlflow.log_metric("optimization_time_minutes", optimization_time/60)
-                    if business_validation['passes_business_logic']:
+            with mlflow.start_run(run_name=f"RF_RandomizedSearch_{datetime.now().strftime('%H%M%S')}", nested=True):
+                mlflow.log_param("optimization_strategy", "conservative_randomized_search")
+                mlflow.log_params(rf_search.best_params_)
+                mlflow.log_metric("best_cv_f1", rf_search.best_score_)
+                mlflow.log_metric("validation_f1", val_f1)
+                mlflow.log_metric("validation_accuracy", val_acc)
+                mlflow.log_metric("approval_rate", business_validation['approval_rate'])
+                mlflow.log_metric("passes_business_logic", business_validation['passes_business_logic'])
+                mlflow.log_metric("optimization_time_minutes", optimization_time/60)
+                
+                if business_validation['passes_business_logic']:
+                    try:
+                        signature = mlflow.models.infer_signature(data['X_train_opt'], data['y_train_opt'])
+                        mlflow.sklearn.log_model(best_rf, "optimized_random_forest", signature=signature)
+                        logger.info("    RandomizedSearch RF logged with signature")
+                    except Exception as e:
+                        logger.warning(f"    Failed to log RF with signature: {e}")
                         mlflow.sklearn.log_model(best_rf, "optimized_random_forest")
-            except Exception as e:
-                logger.warning(f"MLflow RF logging failed: {e}")
         
     except Exception as e:
         logger.error(f"Randomized search failed: {e}")
@@ -765,23 +1106,27 @@ def optimize_random_forest(data, config, logger, mlflow=None, optuna=None):
             else:
                 logger.warning(f"    Optuna model failed business validation, skipping...")
             
-            # Safe MLflow logging
+            # Log to MLflow
             if mlflow:
-                try:
-                    with mlflow.start_run(run_name=f"RF_Optuna_{datetime.now().strftime('%H%M%S')}", nested=True):
-                        mlflow.log_param("optimization_strategy", "business_constrained_optuna")
-                        mlflow.log_params(study.best_params)
-                        mlflow.log_metric("best_cv_f1", study.best_value)
-                        mlflow.log_metric("validation_f1", val_f1)
-                        mlflow.log_metric("validation_accuracy", val_acc)
-                        mlflow.log_metric("approval_rate", business_validation['approval_rate'])
-                        mlflow.log_metric("passes_business_logic", business_validation['passes_business_logic'])
-                        mlflow.log_metric("optimization_time_minutes", optimization_time/60)
-                        mlflow.log_metric("n_trials", len(study.trials))
-                        if business_validation['passes_business_logic']:
+                with mlflow.start_run(run_name=f"RF_Optuna_{datetime.now().strftime('%H%M%S')}", nested=True):
+                    mlflow.log_param("optimization_strategy", "business_constrained_optuna")
+                    mlflow.log_params(study.best_params)
+                    mlflow.log_metric("best_cv_f1", study.best_value)
+                    mlflow.log_metric("validation_f1", val_f1)
+                    mlflow.log_metric("validation_accuracy", val_acc)
+                    mlflow.log_metric("approval_rate", business_validation['approval_rate'])
+                    mlflow.log_metric("passes_business_logic", business_validation['passes_business_logic'])
+                    mlflow.log_metric("optimization_time_minutes", optimization_time/60)
+                    mlflow.log_metric("n_trials", len(study.trials))
+                    
+                    if business_validation['passes_business_logic']:
+                        try:
+                            signature = mlflow.models.infer_signature(data['X_train_opt'], data['y_train_opt'])
+                            mlflow.sklearn.log_model(best_rf_optuna, "optuna_random_forest", signature=signature)
+                            logger.info("    Optuna RF logged with signature")
+                        except Exception as e:
+                            logger.warning(f"    Failed to log Optuna RF with signature: {e}")
                             mlflow.sklearn.log_model(best_rf_optuna, "optuna_random_forest")
-                except Exception as e:
-                    logger.warning(f"MLflow Optuna logging failed: {e}")
         
         except Exception as e:
             logger.error(f"Optuna optimization failed: {e}")
@@ -789,10 +1134,172 @@ def optimize_random_forest(data, config, logger, mlflow=None, optuna=None):
     return results
 
 # ============================================================================
-# 5. MODEL EVALUATION & SELECTION WITH BUSINESS VALIDATION
+# 5. MULTI-MODEL OPTIMIZATION WITH BUSINESS CONSTRAINTS
 # ============================================================================
 
-def evaluate_all_models(rf_results, baseline, data, config, logger):
+def optimize_multiple_models(data, config, logger, mlflow=None):
+    """Optimize multiple model types dengan business constraints dan custom parameters"""
+    logger.info("Starting multi-model optimization with business constraints...")
+    
+    models_config = {
+        'Gradient Boosting': {
+            'model': GradientBoostingClassifier(random_state=config.random_state),
+            'param_grid': {
+                'n_estimators': [100, 200],           # Reduced range
+                'learning_rate': [0.05, 0.1, 0.15],   # Conservative learning rates
+                'max_depth': [3, 5, 7],               # Prevent overfitting
+                'min_samples_split': [5, 10],         # Conservative
+                'min_samples_leaf': [2, 4],           # Conservative
+                'subsample': [0.8, 0.9]               # Regularization
+            },
+            'scale_features': False
+        },
+        'Extra Trees': {
+            'model': ExtraTreesClassifier(random_state=config.random_state),
+            'param_grid': {
+                'n_estimators': [100, 200],
+                'max_depth': [10, 15, 20],            # Controlled depth
+                'min_samples_split': [5, 10],
+                'min_samples_leaf': [2, 4],
+                'max_features': ['sqrt', 'log2'],
+                'class_weight': [None, 'balanced']
+            },
+            'scale_features': False
+        },
+        'Logistic Regression': {
+            'model': LogisticRegression(random_state=config.random_state, max_iter=1000),
+            'param_grid': {
+                'C': [0.1, 1, 10],                   # Moderate regularization
+                'penalty': ['l1', 'l2', 'elasticnet'],
+                'solver': ['liblinear', 'saga'],
+                'class_weight': [None, 'balanced'],
+                'alpha': [config.alpha],             # Use alpha from command line
+                'l1_ratio': [config.l1_ratio]        # Use l1_ratio from command line
+            },
+            'scale_features': True
+        }
+    }
+    
+    # Add optimal class weights if available
+    if data.get('class_weights'):
+        for model_config in models_config.values():
+            if 'class_weight' in model_config['param_grid']:
+                model_config['param_grid']['class_weight'].append(data['class_weights'])
+    
+    results = {}
+    
+    for model_name, config_model in models_config.items():
+        try:
+            logger.info(f"  Optimizing {model_name}...")
+            
+            # Prepare data (scale if needed)
+            if config_model['scale_features']:
+                scaler = StandardScaler()
+                X_train_scaled = scaler.fit_transform(data['X_train_opt'])
+                X_val_scaled = scaler.transform(data['X_val'])
+            else:
+                X_train_scaled = data['X_train_opt']
+                X_val_scaled = data['X_val']
+                scaler = None
+            
+            # Business-aware scoring
+            def business_aware_scorer(estimator, X, y):
+                if config_model['scale_features'] and scaler:
+                    X_scaled = scaler.transform(X)
+                    y_pred = estimator.predict(X_scaled)
+                else:
+                    y_pred = estimator.predict(X)
+                
+                approval_rate = np.mean(y_pred)
+                f1 = f1_score(y, y_pred)
+                
+                # Apply business constraints
+                if approval_rate < config.min_approval_rate or approval_rate > config.max_approval_rate:
+                    return f1 * 0.5
+                elif approval_rate < 0.4 or approval_rate > 0.75:
+                    return f1 * 0.8
+                else:
+                    return f1
+            
+            # Randomized search
+            search = RandomizedSearchCV(
+                config_model['model'],
+                config_model['param_grid'],
+                n_iter=config.n_iter_random,
+                cv=config.cv_folds,
+                scoring=business_aware_scorer,
+                n_jobs=-1,
+                random_state=config.random_state,
+                verbose=0
+            )
+            
+            start_time = time.time()
+            search.fit(X_train_scaled, data['y_train_opt'])
+            optimization_time = time.time() - start_time
+            
+            # Evaluate
+            best_model = search.best_estimator_
+            y_val_pred = best_model.predict(X_val_scaled)
+            val_f1 = f1_score(data['y_val'], y_val_pred)
+            val_acc = accuracy_score(data['y_val'], y_val_pred)
+            
+            # Business logic validation
+            business_validation = validate_model_business_logic(
+                best_model, X_val_scaled, data['y_val'], config, logger, model_name
+            )
+            
+            if business_validation['passes_business_logic']:
+                results[model_name] = {
+                    'model': best_model,
+                    'scaler': scaler,
+                    'params': search.best_params_,
+                    'cv_f1': search.best_score_,
+                    'val_f1': val_f1,
+                    'val_acc': val_acc,
+                    'optimization_time': optimization_time,
+                    'scale_features': config_model['scale_features'],
+                    'business_validation': business_validation
+                }
+                
+                logger.info(f"    CV F1: {search.best_score_:.4f}")
+                logger.info(f"    Val F1: {val_f1:.4f}")
+                logger.info(f"    Approval Rate: {business_validation['approval_rate']:.1%}")
+            else:
+                logger.warning(f"    {model_name} failed business validation, skipping...")
+            
+            # Log to MLflow
+            if mlflow and business_validation['passes_business_logic']:
+                with mlflow.start_run(run_name=f"{model_name.replace(' ', '_')}_{datetime.now().strftime('%H%M%S')}", nested=True):
+                    mlflow.log_param("model_type", model_name)
+                    mlflow.log_param("optimization_method", "business_constrained_randomized_search")
+                    mlflow.log_params(search.best_params_)
+                    mlflow.log_metric("best_cv_f1", search.best_score_)
+                    mlflow.log_metric("validation_f1", val_f1)
+                    mlflow.log_metric("validation_accuracy", val_acc)
+                    mlflow.log_metric("approval_rate", business_validation['approval_rate'])
+                    mlflow.log_metric("optimization_time_minutes", optimization_time/60)
+                    
+                    try:
+                        signature = mlflow.models.infer_signature(X_train_scaled, data['y_train_opt'])
+                        mlflow.sklearn.log_model(best_model, "optimized_model", signature=signature)
+                        logger.info(f"    {model_name} logged with signature")
+                    except Exception as e:
+                        logger.warning(f"    Failed to log {model_name} with signature: {e}")
+                        mlflow.sklearn.log_model(best_model, "optimized_model")
+                    
+                    if scaler:
+                        mlflow.sklearn.log_model(scaler, "feature_scaler")
+        
+        except Exception as e:
+            logger.error(f"Optimization failed for {model_name}: {e}")
+    
+    return results
+
+# ============================================================================
+# 6. MODEL EVALUATION & SELECTION WITH BUSINESS VALIDATION
+# ============================================================================
+
+def evaluate_all_models(rf_results, multi_results, baseline, data, config, logger):
     """Evaluate all optimized models dan select best dengan business validation"""
     logger.info("Evaluating all optimized models with business validation...")
     
@@ -803,6 +1310,11 @@ def evaluate_all_models(rf_results, baseline, data, config, logger):
     for strategy, result in rf_results.items():
         if result.get('business_validation', {}).get('passes_business_logic', False):
             all_models[f'RF_{strategy}'] = result
+    
+    # Add multi-model results
+    for model_name, result in multi_results.items():
+        if result.get('business_validation', {}).get('passes_business_logic', False):
+            all_models[model_name] = result
     
     if not all_models:
         logger.error("NO MODELS PASSED BUSINESS VALIDATION!")
@@ -821,8 +1333,14 @@ def evaluate_all_models(rf_results, baseline, data, config, logger):
         try:
             model = result['model']
             
-            # Predict on test set
-            y_pred = model.predict(data['X_test'])
+            # Prepare test data
+            if result.get('scaler'):
+                X_test_processed = result['scaler'].transform(data['X_test'])
+            else:
+                X_test_processed = data['X_test']
+            
+            # Predict
+            y_pred = model.predict(X_test_processed)
             
             # Calculate metrics
             test_f1 = f1_score(data['y_test'], y_pred)
@@ -836,12 +1354,13 @@ def evaluate_all_models(rf_results, baseline, data, config, logger):
             
             # Final business validation on test set
             test_business_validation = validate_model_business_logic(
-                model, data['X_test'], data['y_test'], config, logger, f"{model_name}_test"
+                model, X_test_processed, data['y_test'], config, logger, f"{model_name}_test"
             )
             
             test_results.append({
                 'name': model_name,
                 'model': model,
+                'scaler': result.get('scaler'),
                 'test_f1': test_f1,
                 'test_acc': test_acc,
                 'test_precision': test_precision,
@@ -886,10 +1405,10 @@ def evaluate_all_models(rf_results, baseline, data, config, logger):
             return None, []
 
 # ============================================================================
-# 6. ROBUST MODEL SAVING
+# 7. ROBUST MODEL SAVING
 # ============================================================================
 
-def save_best_model(best_model_result, config, logger, mlflow=None):
+def save_best_model(best_model_result, data, config, logger, mlflow=None):
     """Save best model dan metadata dengan business validation info"""
     logger.info("Saving best model with business validation metadata...")
     
@@ -897,15 +1416,22 @@ def save_best_model(best_model_result, config, logger, mlflow=None):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Save model
-        model_filename = f"{config.output_dir}/best_model_tuned.pkl"
+        model_filename = f"{config.output_dir}/best_model.pkl"
         joblib.dump(best_model_result['model'], model_filename)
         logger.info(f"Model saved: {model_filename}")
         
+        # Save scaler jika ada
+        scaler_filename = None
+        if best_model_result.get('scaler'):
+            scaler_filename = f"{config.output_dir}/scaler_{config.model_name}_{timestamp}.pkl"
+            joblib.dump(best_model_result['scaler'], scaler_filename)
+            logger.info(f"Scaler saved: {scaler_filename}")
+        
         # Save comprehensive model info
-        info_filename = f"{config.output_dir}/model_info_tuned_{timestamp}.txt"
+        info_filename = f"{config.output_dir}/model_info_{timestamp}.txt"
         with open(info_filename, 'w') as f:
-            f.write(f"Credit Approval Model Information (Tuned)\n")
-            f.write(f"=========================================\n\n")
+            f.write(f"Credit Approval Model Information\n")
+            f.write(f"=================================\n\n")
             f.write(f"Best Model: {best_model_result['name']}\n")
             f.write(f"Test F1-Score: {best_model_result['test_f1']:.4f}\n")
             f.write(f"Test Accuracy: {best_model_result['test_acc']:.4f}\n")
@@ -928,26 +1454,42 @@ def save_best_model(best_model_result, config, logger, mlflow=None):
         
         logger.info(f"Model info saved: {info_filename}")
         
-        # Safe MLflow logging
+        # Log to MLflow jika available
         if mlflow:
-            try:
-                with mlflow.start_run(run_name=f"PRODUCTION_MODEL_{timestamp}", nested=True):
-                    mlflow.log_param("model_name", best_model_result['name'])
-                    mlflow.log_param("production_ready", True)
-                    mlflow.log_param("business_logic_validated", best_model_result.get('test_business_validation', {}).get('passes_business_logic', False))
-                    mlflow.log_metric("final_test_f1", best_model_result['test_f1'])
-                    mlflow.log_metric("final_test_accuracy", best_model_result['test_acc'])
-                    mlflow.log_metric("final_approval_rate", best_model_result['test_approval_rate'])
-                    mlflow.log_metric("final_improvement", best_model_result['f1_improvement'])
+            with mlflow.start_run(run_name=f"PRODUCTION_MODEL_{timestamp}", nested=True):
+                mlflow.log_param("model_name", best_model_result['name'])
+                mlflow.log_param("production_ready", True)
+                mlflow.log_param("business_logic_validated", best_model_result.get('test_business_validation', {}).get('passes_business_logic', False))
+                mlflow.log_metric("final_test_f1", best_model_result['test_f1'])
+                mlflow.log_metric("final_test_accuracy", best_model_result['test_acc'])
+                mlflow.log_metric("final_approval_rate", best_model_result['test_approval_rate'])
+                mlflow.log_metric("final_improvement", best_model_result['f1_improvement'])
+                
+                # Log model with signature
+                try:
+                    if best_model_result.get('scaler'):
+                        X_signature = best_model_result['scaler'].transform(data['X_train'])
+                    else:
+                        X_signature = data['X_train']
                     
-                    # Log model
+                    signature = mlflow.models.infer_signature(X_signature, data['y_train'])
+                    mlflow.sklearn.log_model(best_model_result['model'], "production_model", signature=signature)
+                    logger.info("Production model logged with signature")
+                    
+                    if best_model_result.get('scaler'):
+                        mlflow.sklearn.log_model(best_model_result['scaler'], "production_scaler")
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to log production model with signature: {e}")
                     mlflow.sklearn.log_model(best_model_result['model'], "production_model")
-                    
-                    # Log files
-                    mlflow.log_artifact(model_filename)
-                    mlflow.log_artifact(info_filename)
-            except Exception as e:
-                logger.warning(f"MLflow production logging failed: {e}")
+                    if best_model_result.get('scaler'):
+                        mlflow.sklearn.log_model(best_model_result['scaler'], "production_scaler")
+                
+                # Log files
+                mlflow.log_artifact(model_filename)
+                mlflow.log_artifact(info_filename)
+                if scaler_filename:
+                    mlflow.log_artifact(scaler_filename)
         
         return model_filename
         
@@ -956,24 +1498,85 @@ def save_best_model(best_model_result, config, logger, mlflow=None):
         return None
 
 # ============================================================================
-# 7. MAIN EXECUTION
+# 8. MAIN EXECUTION
 # ============================================================================
 
-def main():
-    """Main optimization pipeline dengan business validation"""
-    # Setup
-    config = Config()
-    logger = setup_logging()
-    mlflow, mlflow_available, tracking_type = setup_mlflow_with_robust_fallback(config)
-    optuna, optuna_available = setup_optuna_optional()
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description='Advanced Credit Approval Model Tuning with Business Validation'
+    )
     
-    logger.info("Starting robust model optimization with business validation...")
-    logger.info(f"MLflow tracking: {tracking_type}")
-    logger.info(f"Optuna available: {optuna_available}")
+    # Regularization parameters
+    parser.add_argument(
+        '--alpha', 
+        type=float, 
+        default=0.5,
+        help='Alpha parameter for regularization (default: 0.5)'
+    )
+    
+    parser.add_argument(
+        '--l1_ratio', 
+        type=float, 
+        default=0.1,
+        help='L1 ratio for ElasticNet regularization (default: 0.1)'
+    )
+    
+    # Optional parameters
+    parser.add_argument(
+        '--verbose', 
+        action='store_true',
+        help='Enable verbose logging'
+    )
+    
+    parser.add_argument(
+        '--dry-run', 
+        action='store_true',
+        help='Run validation only without training'
+    )
+    
+    return parser.parse_args()
+
+def main():
+    """Main optimization pipeline dengan business validation dan DagsHub integration"""
+    # Parse command line arguments
+    args = parse_arguments()
+    
+    # Setup with arguments
+    config = Config(args)
+    logger = setup_logging()
+    mlflow, mlflow_available = setup_mlflow_dagshub(config, logger)
+    optuna, optuna_available = setup_optuna_optional(logger)
+    
+    # Log configuration
+    logger.info("Starting robust model optimization with DagsHub & MLflow integration...")
+    logger.info(f"Configuration:")
+    logger.info(f"  Experiment: {config.experiment_name}")
+    logger.info(f"  Model name: {config.model_name}")
+    logger.info(f"  Alpha: {config.alpha}")
+    logger.info(f"  L1 Ratio: {config.l1_ratio}")
+    logger.info(f"  Random State: {config.random_state}")
     logger.info(f"Business constraints:")
     logger.info(f"  Target approval rate: {config.target_approval_rate:.1%}")
     logger.info(f"  Min approval rate: {config.min_approval_rate:.1%}")
     logger.info(f"  Max approval rate: {config.max_approval_rate:.1%}")
+    logger.info(f"Optimization settings:")
+    logger.info(f"  Optuna iterations: {config.n_iter_optuna}")
+    logger.info(f"  Grid search iterations: {config.grid_search_iter}")
+    
+    # Check for dry run
+    if args.dry_run:
+        logger.info("🏃 DRY RUN MODE - Validation only")
+        # Load data for validation
+        data = load_and_validate_data(config, logger)
+        if data:
+            logger.info("✅ Data validation passed - ready for training")
+            logger.info(f"   Training samples: {data['X_train'].shape[0]}")
+            logger.info(f"   Features: {data['X_train'].shape[1]}")
+            logger.info(f"   Training approval rate: {data['train_approval_rate']:.1%}")
+        else:
+            logger.error("❌ Data validation failed")
+        return
     
     # Load data
     data = load_and_validate_data(config, logger)
@@ -989,67 +1592,71 @@ def main():
     
     # Start main optimization
     if mlflow_available:
-        try:
-            with mlflow.start_run(run_name=f"Robust_Model_Optimization_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
-                # Safe parameter logging
-                try:
-                    mlflow.log_param("tracking_type", tracking_type)
-                    mlflow.log_param("optimization_date", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-                    mlflow.log_param("baseline_f1", baseline['f1'])
-                    mlflow.log_param("baseline_approval_rate", baseline['business_validation']['approval_rate'])
-                    mlflow.log_param("target_improvement", config.target_improvement)
-                    mlflow.log_param("target_approval_rate", config.target_approval_rate)
-                    mlflow.log_param("total_samples", len(data['X_train']))
-                    mlflow.log_param("features", data['X_train'].shape[1])
-                    mlflow.log_param("train_approval_rate", data['train_approval_rate'])
-                except Exception as e:
-                    logger.warning(f"MLflow param logging failed: {e}")
-                
-                # Run optimizations
-                rf_results = optimize_random_forest(data, config, logger, mlflow, optuna)
-                
-                # Evaluate and select best
-                best_model, all_results = evaluate_all_models(rf_results, baseline, data, config, logger)
-                
-                if best_model:
-                    # Save model
-                    model_file = save_best_model(best_model, config, logger, mlflow)
-                    
-                    # Final logging
-                    try:
-                        mlflow.log_metric("optimization_success", 1)
-                        mlflow.log_param("best_model_name", best_model['name'])
-                        mlflow.log_metric("final_improvement", best_model['f1_improvement'])
-                        mlflow.log_metric("final_approval_rate", best_model['test_approval_rate'])
-                    except Exception as e:
-                        logger.warning(f"MLflow final logging failed: {e}")
-                else:
-                    logger.error("No valid models found")
-                    try:
-                        mlflow.log_metric("optimization_success", 0)
-                    except:
-                        pass
-        except Exception as e:
-            logger.error(f"MLflow main run failed: {e}")
-            # Continue without MLflow
-            rf_results = optimize_random_forest(data, config, logger)
-            best_model, all_results = evaluate_all_models(rf_results, baseline, data, config, logger)
+        with mlflow.start_run(run_name=f"Advanced_Tuning_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
+            # Log configuration
+            mlflow.log_param("optimization_date", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            mlflow.log_param("experiment_name", config.experiment_name)
+            mlflow.log_param("model_name", config.model_name)
+            mlflow.log_param("alpha", config.alpha)
+            mlflow.log_param("l1_ratio", config.l1_ratio)
+            mlflow.log_param("random_state", config.random_state)
+            mlflow.log_param("baseline_f1", baseline['f1'])
+            mlflow.log_param("baseline_approval_rate", baseline['business_validation']['approval_rate'])
+            mlflow.log_param("target_improvement", config.target_improvement)
+            mlflow.log_param("target_approval_rate", config.target_approval_rate)
+            mlflow.log_param("min_approval_rate", config.min_approval_rate)
+            mlflow.log_param("max_approval_rate", config.max_approval_rate)
+            mlflow.log_param("n_iter_optuna", config.n_iter_optuna)
+            mlflow.log_param("grid_search_iter", config.grid_search_iter)
+            mlflow.log_param("total_samples", len(data['X_train']))
+            mlflow.log_param("features", data['X_train'].shape[1])
+            mlflow.log_param("train_approval_rate", data['train_approval_rate'])
+            mlflow.log_param("dagshub_integration", True)
+            mlflow.log_param("dagshub_repo", config.dagshub_url)
+            
+            # Run optimizations
+            rf_results = optimize_random_forest(data, config, logger, mlflow, optuna)
+            multi_results = optimize_multiple_models(data, config, logger, mlflow)
+            
+            # Evaluate and select best
+            best_model, all_results = evaluate_all_models(rf_results, multi_results, baseline, data, config, logger)
             
             if best_model:
-                model_file = save_best_model(best_model, config, logger)
+                # Save model
+                model_file = save_best_model(best_model, data, config, logger, mlflow)
+                
+                # Final logging
+                mlflow.log_metric("optimization_success", 1)
+                mlflow.log_param("best_model_name", best_model['name'])
+                mlflow.log_metric("final_improvement", best_model['f1_improvement'])
+                mlflow.log_metric("final_approval_rate", best_model['test_approval_rate'])
+                mlflow.log_param("model_file_saved", model_file is not None)
+                mlflow.log_metric("alpha_used", config.alpha)
+                mlflow.log_metric("l1_ratio_used", config.l1_ratio)
+            else:
+                logger.error("No valid models found")
+                if mlflow_available:
+                    mlflow.log_metric("optimization_success", 0)
     else:
         # Run without MLflow
         rf_results = optimize_random_forest(data, config, logger)
-        best_model, all_results = evaluate_all_models(rf_results, baseline, data, config, logger)
+        multi_results = optimize_multiple_models(data, config, logger)
+        best_model, all_results = evaluate_all_models(rf_results, multi_results, baseline, data, config, logger)
         
         if best_model:
-            model_file = save_best_model(best_model, config, logger)
+            model_file = save_best_model(best_model, data, config, logger)
     
     # Print final summary
     if best_model:
         logger.info("=" * 70)
-        logger.info("ROBUST MODEL OPTIMIZATION COMPLETED SUCCESSFULLY!")
+        logger.info("ADVANCED MODEL TUNING WITH DAGSHUB COMPLETED SUCCESSFULLY!")
         logger.info("=" * 70)
+        logger.info(f"EXPERIMENT CONFIGURATION:")
+        logger.info(f"  Experiment: {config.experiment_name}")
+        logger.info(f"  Model Name: {config.model_name}")
+        logger.info(f"  Alpha (Regularization): {config.alpha}")
+        logger.info(f"  L1 Ratio (ElasticNet): {config.l1_ratio}")
+        logger.info(f"  Random State: {config.random_state}")
         logger.info(f"OPTIMIZATION SUMMARY:")
         logger.info(f"  Baseline F1-Score: {baseline['f1']:.4f}")
         logger.info(f"  Baseline Approval Rate: {baseline['business_validation']['approval_rate']:.1%}")
@@ -1057,7 +1664,6 @@ def main():
         logger.info(f"  Best Approval Rate: {best_model['test_approval_rate']:.1%}")
         logger.info(f"  Total Improvement: {best_model['f1_improvement']:+.4f}")
         logger.info(f"  Best Model: {best_model['name']}")
-        logger.info(f"  MLflow Tracking: {tracking_type}")
         
         target_met = best_model['f1_improvement'] >= config.target_improvement
         business_valid = best_model.get('test_business_validation', {}).get('passes_business_logic', False)
@@ -1067,27 +1673,33 @@ def main():
         logger.info(f"  Business Logic: {'VALID' if business_valid else 'INVALID'}")
         logger.info(f"  Approval Rate: {'HEALTHY' if config.min_approval_rate <= best_model['test_approval_rate'] <= config.max_approval_rate else 'OUT OF RANGE'} ({best_model['test_approval_rate']:.1%})")
         
+        if mlflow_available:
+            logger.info(f"\nDAGSHUB INTEGRATION:")
+            logger.info(f"  Repository: {config.dagshub_url}")
+            logger.info(f"  Experiment tracked: {config.experiment_name}")
+            logger.info(f"  Models logged with signatures: ✓")
+        
         if target_met and business_valid:
             logger.info(f"\nOPTIMIZATION FULLY SUCCESSFUL!")
             logger.info(f"   Model ready for production deployment")
+            logger.info(f"   Check DagsHub for detailed experiment tracking")
+            logger.info(f"   Used Alpha: {config.alpha}, L1 Ratio: {config.l1_ratio}")
         elif business_valid:
             logger.info(f"\nBUSINESS VALIDATION PASSED")
             logger.info(f"   Model safe for production despite F1 target not fully met")
+            logger.info(f"   Consider adjusting Alpha ({config.alpha}) or L1 Ratio ({config.l1_ratio})")
         else:
             logger.warning(f"\nBUSINESS VALIDATION FAILED")
             logger.warning(f"   Model may need further tuning before production")
-            
-        if tracking_type == "local":
-            logger.info(f"\nView results: run 'mlflow ui' in terminal")
-        elif tracking_type == "dagshub":
-            logger.info(f"\nView results: {config.dagshub_url}")
-            
+            logger.warning(f"   Try different Alpha/L1 Ratio values or adjust business constraints")
     else:
         logger.error("Optimization failed - no valid models produced")
         logger.error("Consider:")
-        logger.error("  1. Adjusting business constraints")
-        logger.error("  2. Using different dataset")
-        logger.error("  3. Manual hyperparameter tuning")
+        logger.error(f"  1. Adjusting regularization parameters (Alpha: {config.alpha}, L1 Ratio: {config.l1_ratio})")
+        logger.error("  2. Adjusting business constraints")
+        logger.error("  3. Using different dataset")
+        logger.error("  4. Manual hyperparameter tuning")
+        logger.error("  5. Checking DagsHub logs for detailed analysis")
 
 if __name__ == "__main__":
     main()
