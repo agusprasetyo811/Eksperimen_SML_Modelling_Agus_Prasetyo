@@ -4,3 +4,7 @@
 /.ipynb_checkpoints/
 .env
 *_bak.py
+mlflow.db
+inference.py
+/logs/
+
