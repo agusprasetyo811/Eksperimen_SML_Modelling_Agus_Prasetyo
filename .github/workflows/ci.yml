@@ -11,6 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+    - name: Debug environment variables
+      shell: bash -l {0}
+      run: |
+        echo "DAGSHUB_REPO_URL=$DAGSHUB_REPO_URL"
+        echo "DAGSHUB_USERNAME=$DAGSHUB_USERNAME"
+        echo "EXPERIMENT_NAME=$EXPERIMENT_NAME"
     - name: Checkout code
       uses: actions/checkout@v4
       
@@ -36,16 +42,15 @@ jobs:
         DAGSHUB_REPO_URL: ${{ secrets.DAGSHUB_REPO_URL }}
         MODEL_NAME: ${{ secrets.MODEL_NAME }}
       run: |
-        # Setup DagsHub credentials
-        export MLFLOW_TRACKING_URI=$DAGSHUB_REPO_URL.mlflow >> $GITHUB_ENV
-        export MLFLOW_TRACKING_USERNAME=$DAGSHUB_USERNAME >> $GITHUB_ENV
-        export MLFLOW_TRACKING_PASSWORD=$DAGSHUB_TOKEN >> $GITHUB_ENV
-        
-        # Save to environment for next steps
+        echo "DAGSHUB_USERNAME=$DAGSHUB_USERNAME" >> $GITHUB_ENV
+        echo "DAGSHUB_TOKEN=$DAGSHUB_TOKEN" >> $GITHUB_ENV
+        echo "DAGSHUB_REPO_URL=$DAGSHUB_REPO_URL" >> $GITHUB_ENV
+        echo "MODEL_NAME=$MODEL_NAME" >> $GITHUB_ENV
+        echo "EXPERIMENT_NAME=credit-approval-prediction" >> $GITHUB_ENV
+
         echo "MLFLOW_TRACKING_URI=$DAGSHUB_REPO_URL.mlflow" >> $GITHUB_ENV
         echo "MLFLOW_TRACKING_USERNAME=$DAGSHUB_USERNAME" >> $GITHUB_ENV
         echo "MLFLOW_TRACKING_PASSWORD=$DAGSHUB_TOKEN" >> $GITHUB_ENV
-        echo "MODEL_NAME=$MODEL_NAME" >> $GITHUB_ENV
         
     - name: Verify environment
       shell: bash -l {0}
