@@ -210,13 +210,36 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 def setup_mlflow_dagshub(config, logger):
-    """Enhanced MLflow setup dengan DagsHub integration"""
+    """Enhanced MLflow setup dengan DagsHub integration and CI/CD compatibility"""
     try:
+        # Check if MLflow should be disabled (useful for CI/CD debugging)
+        if os.getenv('DISABLE_MLFLOW', '').lower() in ['true', '1', 'yes']:
+            logger.warning("MLflow disabled via DISABLE_MLFLOW environment variable")
+            return None, False
+            
         import mlflow
         import mlflow.sklearn
         import mlflow.models
         
         logger.info("Setting up MLflow with DagsHub integration...")
+        
+        # CRITICAL: End any existing runs first (CI/CD fix)
+        try:
+            if mlflow.active_run():
+                logger.warning("Found active MLflow run, ending it...")
+                mlflow.end_run()
+        except Exception as e:
+            logger.warning(f"Error ending existing run: {e}")
+        
+        # Clear environment variables that might interfere
+        mlflow_env_vars = [
+            'MLFLOW_RUN_ID', 
+            'MLFLOW_EXPERIMENT_ID'
+        ]
+        for var in mlflow_env_vars:
+            if var in os.environ:
+                logger.info(f"Clearing environment variable: {var}")
+                del os.environ[var]
         
         # Simple fallback to local MLflow if DagsHub not configured
         if not config.dagshub_token:
@@ -240,7 +263,7 @@ def setup_mlflow_dagshub(config, logger):
                 logger.warning("Falling back to local MLflow tracking...")
                 mlflow.set_tracking_uri("file:./mlruns")
         
-        # Set or create experiment
+        # Set or create experiment with better error handling
         try:
             experiment = mlflow.get_experiment_by_name(config.experiment_name)
             if experiment is None:
@@ -254,6 +277,13 @@ def setup_mlflow_dagshub(config, logger):
         except Exception as e:
             logger.error(f"Failed to set/create experiment: {e}")
             logger.warning("Using default experiment")
+        
+        # Test MLflow connection
+        try:
+            current_experiment = mlflow.get_experiment_by_name(config.experiment_name)
+            logger.info(f"MLflow setup successful - experiment: {current_experiment.name if current_experiment else 'default'}")
+        except Exception as e:
+            logger.warning(f"MLflow test failed: {e}")
         
         return mlflow, True
         
@@ -275,6 +305,35 @@ def setup_optuna_optional(logger):
         logger.warning("Optuna not installed. Bayesian optimization will be skipped.")
         logger.info("   Install with: pip install optuna")
         return None, False
+
+def safe_mlflow_run(mlflow, config, logger, run_function):
+    """Safely execute function within MLflow run context"""
+    if not mlflow:
+        return run_function(None)
+    
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Ensure no active run
+            if mlflow.active_run():
+                logger.warning(f"Ending existing run (attempt {attempt + 1})")
+                mlflow.end_run()
+            
+            # Start new run
+            run_name = f"SIMPLIFIED_Tuning_{datetime.now().strftime('%Y%m%d_%H%M%S')}_attempt_{attempt + 1}"
+            with mlflow.start_run(run_name=run_name):
+                return run_function(mlflow)
+                
+        except Exception as e:
+            logger.warning(f"MLflow run attempt {attempt + 1} failed: {e}")
+            if attempt == max_retries - 1:
+                logger.error("All MLflow attempts failed, running without MLflow")
+                return run_function(None)
+            
+            # Wait before retry
+            time.sleep(1)
+    
+    return None
 
 # ============================================================================
 # 1. ROBUST DATA LOADING WITH CLASS BALANCE ANALYSIS
@@ -1138,7 +1197,80 @@ if __name__ == "__main__":
         return None
 
 # ============================================================================
-# 8. MAIN EXECUTION
+# 8. OPTIMIZATION PIPELINE FUNCTION
+# ============================================================================
+
+def run_optimization_pipeline(mlflow, data, config, logger, baseline):
+    """Main optimization pipeline that can run with or without MLflow"""
+    try:
+        if mlflow:
+            # Log configuration
+            mlflow.log_param("optimization_version", "SIMPLIFIED_WITH_METADATA")
+            mlflow.log_param("optimization_date", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            mlflow.log_param("alpha", config.alpha)
+            mlflow.log_param("l1_ratio", config.l1_ratio)
+            mlflow.log_param("baseline_f1", baseline['f1'])
+            mlflow.log_param("total_samples", len(data['X_train']))
+            mlflow.log_param("features", data['X_train'].shape[1])
+        
+        # Run optimizations
+        rf_results = optimize_random_forest_simple(data, config, logger, mlflow, None)
+        multi_results = optimize_multiple_models_simple(data, config, logger, mlflow)
+        
+        # Evaluate and select best
+        best_model, all_results = evaluate_all_models_simple(rf_results, multi_results, baseline, data, config, logger)
+        
+        if best_model:
+            # Save model with comprehensive metadata
+            model_file = save_best_model_with_metadata(best_model, data, config, logger, mlflow)
+            
+            # Log best model to MLflow if available
+            if mlflow:
+                try:
+                    import mlflow.models
+                    signature = mlflow.models.infer_signature(data['X_train'], data['y_train'])
+                    mlflow.sklearn.log_model(best_model['model'], f"best_model_{best_model['name']}", signature=signature)
+                    logger.info(f"    Logged best_model_{best_model['name']} with signature to MLflow")
+                except Exception as e:
+                    logger.warning(f"    Failed to log best_model_{best_model['name']} with signature: {e}")
+                    try:
+                        mlflow.sklearn.log_model(best_model['model'], f"best_model_{best_model['name']}")
+                    except Exception as e2:
+                        logger.warning(f"    Failed to log model at all: {e2}")
+                
+                # Final logging
+                try:
+                    mlflow.log_metric("optimization_success", 1)
+                    mlflow.log_param("best_model_name", best_model['name'])
+                    mlflow.log_metric("final_improvement", best_model['f1_improvement'])
+                    mlflow.log_metric("final_approval_rate", best_model['test_approval_rate'])
+                    mlflow.log_metric("final_unique_predictions", best_model['unique_predictions'])
+                    mlflow.log_param("has_feature_metadata", True)
+                except Exception as e:
+                    logger.warning(f"    Failed to log final metrics: {e}")
+            
+            return best_model, model_file
+        else:
+            logger.error("No valid models found")
+            if mlflow:
+                try:
+                    mlflow.log_metric("optimization_success", 0)
+                except Exception as e:
+                    logger.warning(f"Failed to log failure metric: {e}")
+            return None, None
+            
+    except Exception as e:
+        logger.error(f"Optimization pipeline failed: {e}")
+        if mlflow:
+            try:
+                mlflow.log_metric("optimization_success", 0)
+                mlflow.log_param("error_message", str(e))
+            except Exception as e2:
+                logger.warning(f"Failed to log error: {e2}")
+        return None, None
+
+# ============================================================================
+# 9. ARGUMENT PARSING AND MAIN
 # ============================================================================
 
 def parse_arguments():
@@ -1151,18 +1283,26 @@ def parse_arguments():
     parser.add_argument('--l1_ratio', type=float, default=0.1, help='L1 ratio (default: 0.1)')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose logging')
     parser.add_argument('--dry-run', action='store_true', help='Run validation only')
+    parser.add_argument('--disable-mlflow', action='store_true', help='Disable MLflow tracking (useful for CI/CD)')
     
     return parser.parse_args()
 
 def main():
-    """Main optimization pipeline - SIMPLIFIED VERSION"""
+    """Main optimization pipeline - SIMPLIFIED VERSION with CI/CD MLflow fixes"""
     # Parse command line arguments
     args = parse_arguments()
     
     # Setup with arguments
     config = Config(args)
     logger = setup_logging()
-    mlflow, mlflow_available = setup_mlflow_dagshub(config, logger)
+    
+    # Check if MLflow should be disabled
+    if args.disable_mlflow:
+        logger.info("MLflow disabled via command line argument")
+        mlflow, mlflow_available = None, False
+    else:
+        mlflow, mlflow_available = setup_mlflow_dagshub(config, logger)
+    
     optuna, optuna_available = setup_optuna_optional(logger)
     
     # Log configuration
@@ -1172,6 +1312,7 @@ def main():
     logger.info(f"  Alpha: {config.alpha}")
     logger.info(f"  L1 Ratio: {config.l1_ratio}")
     logger.info(f"  Random State: {config.random_state}")
+    logger.info(f"  MLflow Available: {mlflow_available}")
     logger.info(f"Business constraints:")
     logger.info(f"  Target approval rate: {config.target_approval_rate:.1%}")
     logger.info(f"  Min approval rate: {config.min_approval_rate:.1%}")
@@ -1202,58 +1343,17 @@ def main():
         logger.error("Failed to calculate baseline. Exiting...")
         return
     
-    # Start main optimization
+    # Start main optimization with safe MLflow handling
     try:
         if mlflow_available:
-            with mlflow.start_run(run_name=f"SIMPLIFIED_Tuning_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
-                # Log configuration
-                mlflow.log_param("optimization_version", "SIMPLIFIED_WITH_METADATA")
-                mlflow.log_param("optimization_date", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-                mlflow.log_param("alpha", config.alpha)
-                mlflow.log_param("l1_ratio", config.l1_ratio)
-                mlflow.log_param("baseline_f1", baseline['f1'])
-                mlflow.log_param("total_samples", len(data['X_train']))
-                mlflow.log_param("features", data['X_train'].shape[1])
-                
-                # Run optimizations
-                rf_results = optimize_random_forest_simple(data, config, logger, mlflow, optuna)
-                multi_results = optimize_multiple_models_simple(data, config, logger, mlflow)
-                
-                # Evaluate and select best
-                best_model, all_results = evaluate_all_models_simple(rf_results, multi_results, baseline, data, config, logger)
-                
-                if best_model:
-                    # Save model with comprehensive metadata
-                    model_file = save_best_model_with_metadata(best_model, data, config, logger, mlflow)
-                    
-                    # Create model signature and log to MLflow (for best model)
-                    try:
-                        import mlflow.models
-                        signature = mlflow.models.infer_signature(data['X_train'], data['y_train'])
-                        mlflow.sklearn.log_model(best_model['model'], f"best_model_{best_model['name']}", signature=signature)
-                        logger.info(f"    Logged best_model_{best_model['name']} with signature to MLflow")
-                    except Exception as e:
-                        logger.warning(f"    Failed to log best_model_{best_model['name']} with signature: {e}")
-                        mlflow.sklearn.log_model(best_model['model'], f"best_model_{best_model['name']}")
-                    
-                    # Final logging
-                    mlflow.log_metric("optimization_success", 1)
-                    mlflow.log_param("best_model_name", best_model['name'])
-                    mlflow.log_metric("final_improvement", best_model['f1_improvement'])
-                    mlflow.log_metric("final_approval_rate", best_model['test_approval_rate'])
-                    mlflow.log_metric("final_unique_predictions", best_model['unique_predictions'])
-                    mlflow.log_param("has_feature_metadata", True)
-                else:
-                    logger.error("No valid models found")
-                    mlflow.log_metric("optimization_success", 0)
+            # Use safe MLflow execution
+            best_model, model_file = safe_mlflow_run(
+                mlflow, config, logger, 
+                lambda mlf: run_optimization_pipeline(mlf, data, config, logger, baseline)
+            )
         else:
             # Run without MLflow
-            rf_results = optimize_random_forest_simple(data, config, logger)
-            multi_results = optimize_multiple_models_simple(data, config, logger)
-            best_model, all_results = evaluate_all_models_simple(rf_results, multi_results, baseline, data, config, logger)
-            
-            if best_model:
-                model_file = save_best_model_with_metadata(best_model, data, config, logger)
+            best_model, model_file = run_optimization_pipeline(None, data, config, logger, baseline)
         
         # Print final summary
         if best_model:
@@ -1299,15 +1399,15 @@ def main():
                 
                 # Show usage instructions
                 logger.info(f"\nQUICK START:")
-                logger.info(f"1. Test the model:")
                 helper_files = glob.glob(f"{config.output_dir}/prediction_helper_*.py")
                 if helper_files:
                     latest_helper = max(helper_files, key=os.path.getctime)
+                    logger.info(f"1. Test the model:")
                     logger.info(f"   python {latest_helper}")
-                
-                logger.info(f"2. Use in your code:")
-                logger.info(f"   from {os.path.basename(latest_helper).replace('.py', '')} import predict_credit_approval")
-                logger.info(f"   result = predict_credit_approval({{'umur': 35, 'pendapatan': 12000000, ...}})")
+                    
+                    logger.info(f"2. Use in your code:")
+                    logger.info(f"   from {os.path.basename(latest_helper).replace('.py', '')} import predict_credit_approval")
+                    logger.info(f"   result = predict_credit_approval({{'umur': 35, 'pendapatan': 12000000, ...}})")
                 
             else:
                 logger.warning(f"\nOPTIMIZATION NEEDS IMPROVEMENT")
@@ -1325,6 +1425,16 @@ def main():
         logger.error(f"Optimization failed with error: {e}")
         import traceback
         traceback.print_exc()
+    
+    finally:
+        # Ensure MLflow run is properly closed
+        if mlflow_available and mlflow:
+            try:
+                if mlflow.active_run():
+                    logger.info("Cleaning up MLflow run...")
+                    mlflow.end_run()
+            except Exception as e:
+                logger.warning(f"Error cleaning up MLflow run: {e}")
 
 if __name__ == "__main__":
     main()
